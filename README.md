@@ -1,5 +1,8 @@
 # WxCraft
-<img src="assets/logo.svg" alt="WxCraft Icon" width="170" align="right">
+<img src="assets/logo.svg" alt="WxCraft Icon" width="110" align="right">
+
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/rmitchellscott/WxCraft)](https://github.com/rmitchellscott/WxCraft/releases)
+[![Build](https://github.com/rmitchellscott/WxCraft/actions/workflows/build.yaml/badge.svg)](https://github.com/rmitchellscott/WxCraft/actions/workflows/build.yaml)
 
 A command-line tool for fetching, decoding, and displaying aviation weather reports (METAR) and forecasts (TAF).
 
