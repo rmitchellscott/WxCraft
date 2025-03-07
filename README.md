@@ -30,8 +30,6 @@ This Go application provides pilots, aviation enthusiasts, and weather watchers 
 
 ### Download Prebuilt Binaries
 
-The easiest way to install WxCraft is to download the prebuilt binaries:
-
 1. Visit the [releases page](https://github.com/rmitchellscott/WxCraft/releases)
 2. Download the appropriate version for your operating system:
    - Windows: `wxcraft_windows_amd64.zip`
