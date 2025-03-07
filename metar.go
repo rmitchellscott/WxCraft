@@ -50,18 +50,18 @@ var weatherCodes = map[string]string{
 
 // Common cloud coverage mapping
 var cloudCoverage = map[string]string{
-	"SKC": "Sky clear",
-	"CLR": "Clear",
-	"FEW": "Few clouds",
-	"SCT": "Scattered clouds",
-	"BKN": "Broken clouds",
-	"OVC": "Overcast",
+	"SKC": "sky clear",
+	"CLR": "slear",
+	"FEW": "few clouds",
+	"SCT": "scattered clouds",
+	"BKN": "broken clouds",
+	"OVC": "overcast",
 }
 
 // Common cloud type mapping
 var cloudTypes = map[string]string{
-	"CB":  "Cumulonimbus",
-	"TCU": "Towering cumulus",
+	"CB":  "cumulonimbus",
+	"TCU": "towering cumulus",
 }
 
 // Common weather description mapping for simplified display
@@ -1094,7 +1094,7 @@ func formatClouds(clouds []Cloud) string {
 
 		cloudDesc := coverStr
 		if cloud.Height > 0 {
-			cloudDesc = fmt.Sprintf("%s at %d feet", cloudDesc, cloud.Height)
+			cloudDesc = fmt.Sprintf("%s at %s feet", coverStr, formatNumberWithCommas(cloud.Height))
 		}
 
 		if cloud.Type != "" {
@@ -1173,7 +1173,7 @@ func FormatMETAR(m METAR) string {
 	// Weather
 	if len(m.Weather) > 0 {
 		weatherStr := formatWeather(m.Weather)
-		sb.WriteString(fmt.Sprintf("Weather: %s\n", weatherStr))
+		sb.WriteString(fmt.Sprintf("Weather: %s\n", capitalizeFirst(weatherStr)))
 	} else if hasClear {
 		// No weather but we have CLR or SKC, so show "Clear" as the weather
 		sb.WriteString("Weather: Clear\n")
@@ -1197,7 +1197,7 @@ func FormatMETAR(m METAR) string {
 
 		if len(cloudsToDisplay) > 0 {
 			cloudStr := formatClouds(cloudsToDisplay)
-			sb.WriteString(fmt.Sprintf("Clouds: %s\n", cloudStr))
+			sb.WriteString(fmt.Sprintf("Clouds: %s\n", capitalizeFirst(cloudStr)))
 		}
 	}
 
@@ -1219,7 +1219,7 @@ func FormatMETAR(m METAR) string {
 	if len(m.Remarks) > 0 {
 		sb.WriteString("\nRemarks:\n")
 		for _, remark := range m.Remarks {
-			sb.WriteString(fmt.Sprintf("  %s: %s\n", remark.Raw, remark.Description))
+			sb.WriteString(fmt.Sprintf("  %s: %s\n", remark.Raw, capitalizeFirst(remark.Description)))
 		}
 	}
 
@@ -1291,13 +1291,13 @@ func FormatTAF(t TAF) string {
 		// Weather
 		weatherStr := formatWeather(forecast.Weather)
 		if weatherStr != "" {
-			sb.WriteString(fmt.Sprintf("   Weather: %s\n", weatherStr))
+			sb.WriteString(fmt.Sprintf("   Weather: %s\n", capitalizeFirst(weatherStr)))
 		}
 
 		// Clouds
 		cloudStr := formatClouds(forecast.Clouds)
 		if cloudStr != "" {
-			sb.WriteString(fmt.Sprintf("   Clouds: %s\n", cloudStr))
+			sb.WriteString(fmt.Sprintf("   Clouds: %s\n", capitalizeFirst(cloudStr)))
 		}
 	}
 

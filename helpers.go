@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -111,4 +112,29 @@ func processTAF(stationCode string, noRaw bool) {
 	fmt.Println("\nDecoded TAF:")
 	decoded := DecodeTAF(taf)
 	fmt.Print(FormatTAF(decoded))
+}
+
+// capitalizeFirst capitalizes the first letter of a string
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return ""
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// formatNumberWithCommas adds thousands separators to a number
+func formatNumberWithCommas(n int) string {
+	// Convert to string first
+	numStr := strconv.Itoa(n)
+
+	// Add commas for thousands
+	result := ""
+	for i, c := range numStr {
+		if i > 0 && (len(numStr)-i)%3 == 0 {
+			result += ","
+		}
+		result += string(c)
+	}
+
+	return result
 }
