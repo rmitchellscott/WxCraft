@@ -50,18 +50,18 @@ var weatherCodes = map[string]string{
 
 // Common cloud coverage mapping
 var cloudCoverage = map[string]string{
-	"SKC": "sky clear",
-	"CLR": "clear",
-	"FEW": "few clouds",
-	"SCT": "scattered clouds",
-	"BKN": "broken clouds",
-	"OVC": "overcast",
+	"SKC": "Sky clear",
+	"CLR": "Clear",
+	"FEW": "Few clouds",
+	"SCT": "Scattered clouds",
+	"BKN": "Broken clouds",
+	"OVC": "Overcast",
 }
 
 // Common cloud type mapping
 var cloudTypes = map[string]string{
-	"CB":  "cumulonimbus",
-	"TCU": "towering cumulus",
+	"CB":  "Cumulonimbus",
+	"TCU": "Towering cumulus",
 }
 
 // Common weather description mapping for simplified display
@@ -89,7 +89,7 @@ var (
 	windRegex     = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
 	visRegexM     = regexp.MustCompile(`^(\d+(?:/\d+)?|M)SM$`)
 	visRegexP     = regexp.MustCompile(`^(\d+(?:/\d+)?|M|P)(\d+)SM$`)
-	cloudRegex    = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC)(\d{3})(CB|TCU)?$`)
+	cloudRegex    = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC)(\d{3})?(CB|TCU)?$`)
 	tempRegex     = regexp.MustCompile(`^(M?)(\d{2})/(M?)(\d{2})$`)
 	pressureRegex = regexp.MustCompile(`^A(\d{4})$`)
 	validRegex    = regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
@@ -248,7 +248,8 @@ func parseCloud(cloudStr string) Cloud {
 		Type:     matches[3],
 	}
 
-	if matches[2] != "" {
+	// Only try to parse height if it exists
+	if matches[2] != "" && len(matches[2]) > 0 {
 		height, _ := strconv.Atoi(matches[2])
 		cloud.Height = height * 100
 	}
@@ -331,6 +332,7 @@ func DecodeMETAR(raw string) METAR {
 			continue
 		}
 
+		// Clouds
 		// Clouds
 		if cloudRegex.MatchString(part) {
 			cloud := parseCloud(part)
@@ -1102,15 +1104,26 @@ func FormatMETAR(m METAR) string {
 		sb.WriteString(fmt.Sprintf("Visibility: %s\n", visibilityDesc))
 	}
 
-	// Weather
-	weatherStr := formatWeather(m.Weather)
-	if weatherStr != "" {
-		sb.WriteString(fmt.Sprintf("Weather: %s\n", weatherStr))
+	hasClear := false
+	for _, cloud := range m.Clouds {
+		if cloud.Coverage == "CLR" || cloud.Coverage == "SKC" {
+			hasClear = true
+			break
+		}
 	}
 
-	// Clouds
-	cloudStr := formatClouds(m.Clouds)
-	if cloudStr != "" {
+	// Weather
+	if len(m.Weather) > 0 {
+		weatherStr := formatWeather(m.Weather)
+		sb.WriteString(fmt.Sprintf("Weather: %s\n", weatherStr))
+	} else if hasClear {
+		// No weather but we have CLR or SKC, so show "Clear" as the weather
+		sb.WriteString("Weather: Clear\n")
+	}
+
+	// Clouds (including CLR if present)
+	if len(m.Clouds) > 0 {
+		cloudStr := formatClouds(m.Clouds)
 		sb.WriteString(fmt.Sprintf("Clouds: %s\n", cloudStr))
 	}
 
