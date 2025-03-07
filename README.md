@@ -25,6 +25,9 @@ This Go application provides pilots, aviation enthusiasts, and weather watchers 
 
 ## Installation
 
+### Homebrew (macOS)
+`brew install rmitchellscott/tap/wxcraft`
+
 ### Download Prebuilt Binaries
 
 The easiest way to install WxCraft is to download the prebuilt binaries:

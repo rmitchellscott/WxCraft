@@ -37,7 +37,18 @@ builds:
       - goos: windows
         goarch: arm
         goarm: 7
-
+brews:
+  - homepage: https://github.com/rmitchellscott/WxCraft
+    description: METAR and TAF retrieval and decoding
+    license: MIT
+    repository:
+      owner: rmitchellscott
+      name: homebrew-tap
+      git:
+        url: 'ssh://git@github.com/rmitchellscott/homebrew-tap.git'
+        private_key: '{{ .Env.HOMEBREW_PRIVATE_KEY }}'
+    directory: Formula
+      
 archives:
   - formats: tar.gz
     # this name template makes the OS and Arch compatible with the results of `uname`.
