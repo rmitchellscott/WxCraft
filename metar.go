@@ -66,6 +66,7 @@ var cloudTypes = map[string]string{
 
 // Common weather description mapping for simplified display
 var weatherDescriptions = map[string]string{
+	// Basic codes
 	"BR":   "mist",
 	"FG":   "fog",
 	"-RA":  "light rain",
@@ -81,6 +82,53 @@ var weatherDescriptions = map[string]string{
 	"DZ":   "drizzle",
 	"-DZ":  "light drizzle",
 	"+DZ":  "heavy drizzle",
+
+	// Composite codes - showers
+	"-SHRA": "light rain showers",
+	"SHRA":  "rain showers",
+	"+SHRA": "heavy rain showers",
+	"-SHSN": "light snow showers",
+	"SHSN":  "snow showers",
+	"+SHSN": "heavy snow showers",
+	"SHGR":  "hail showers",
+	"-SHGR": "light hail showers",
+	"+SHGR": "heavy hail showers",
+
+	// Thunderstorms
+	"+TS":   "heavy thunderstorm",
+	"-TS":   "light thunderstorm",
+	"-TSRA": "light thunderstorm with rain",
+	"+TSRA": "heavy thunderstorm with rain",
+	"TSSN":  "thunderstorm with snow",
+	"-TSSN": "light thunderstorm with snow",
+	"+TSSN": "heavy thunderstorm with snow",
+	"TSGR":  "thunderstorm with hail",
+	"+TSGR": "heavy thunderstorm with hail",
+
+	// Freezing precipitation
+	"FZRA":  "freezing rain",
+	"-FZRA": "light freezing rain",
+	"+FZRA": "heavy freezing rain",
+	"FZDZ":  "freezing drizzle",
+	"-FZDZ": "light freezing drizzle",
+	"+FZDZ": "heavy freezing drizzle",
+
+	// Blowing and drifting
+	"BLSN": "blowing snow",
+	"DRSN": "drifting snow",
+	"BLDU": "blowing dust",
+	"BLSA": "blowing sand",
+
+	// Vicinity phenomena
+	"VCFG": "fog in vicinity",
+	"VCFC": "funnel cloud in vicinity",
+
+	// Other combinations
+	"MIFG": "shallow fog",
+	"BCFG": "patches of fog",
+	"PRFG": "partial fog",
+	"FC":   "funnel cloud",
+	"+FC":  "tornado/waterspout",
 }
 
 // Commonly used regular expressions
@@ -1081,7 +1129,7 @@ func formatWeather(weather []string) string {
 	return strings.Join(weatherStrs, ", ")
 }
 
-// FormatMETAR formats a METAR struct for display
+// / FormatMETAR formats a METAR struct for display
 func FormatMETAR(m METAR) string {
 	var sb strings.Builder
 
@@ -1104,11 +1152,21 @@ func FormatMETAR(m METAR) string {
 		sb.WriteString(fmt.Sprintf("Visibility: %s\n", visibilityDesc))
 	}
 
+	// Check if we have only CLR clouds
 	hasClear := false
+	hasOnlyClear := true
+	var cloudsWithHeight []Cloud
+
 	for _, cloud := range m.Clouds {
 		if cloud.Coverage == "CLR" || cloud.Coverage == "SKC" {
 			hasClear = true
-			break
+		} else {
+			hasOnlyClear = false
+		}
+
+		// Collect clouds with height for possible display
+		if cloud.Height > 0 {
+			cloudsWithHeight = append(cloudsWithHeight, cloud)
 		}
 	}
 
@@ -1121,10 +1179,26 @@ func FormatMETAR(m METAR) string {
 		sb.WriteString("Weather: Clear\n")
 	}
 
-	// Clouds (including CLR if present)
-	if len(m.Clouds) > 0 {
-		cloudStr := formatClouds(m.Clouds)
-		sb.WriteString(fmt.Sprintf("Clouds: %s\n", cloudStr))
+	// Clouds - only show if we have clouds other than CLR/SKC
+	// Or if we have clouds with height information
+	if !hasOnlyClear || len(cloudsWithHeight) > 0 {
+		// Filter out CLR/SKC from display if we already showed it in Weather
+		var cloudsToDisplay []Cloud
+		if hasClear && len(m.Weather) == 0 {
+			// We're showing "Clear" in Weather, so only show non-CLR/SKC clouds
+			for _, cloud := range m.Clouds {
+				if cloud.Coverage != "CLR" && cloud.Coverage != "SKC" {
+					cloudsToDisplay = append(cloudsToDisplay, cloud)
+				}
+			}
+		} else {
+			cloudsToDisplay = m.Clouds
+		}
+
+		if len(cloudsToDisplay) > 0 {
+			cloudStr := formatClouds(cloudsToDisplay)
+			sb.WriteString(fmt.Sprintf("Clouds: %s\n", cloudStr))
+		}
 	}
 
 	// Temperature with Fahrenheit conversion
