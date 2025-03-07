@@ -1,4 +1,4 @@
-# Aviation Weather Decoder
+# WxCraft
 
 A command-line tool for fetching, decoding, and displaying aviation weather reports (METAR) and forecasts (TAF).
 
@@ -7,7 +7,7 @@ This tool is provided for educational and informational purposes only. It should
 
 ## Overview
 
-This Go application provides aviation enthusiasts and weather watchers with human-readable interpretations of aviation weather data. It automatically fetches the latest METAR (Meteorological Aerodrome Report) and TAF (Terminal Aerodrome Forecast) for any airport with an ICAO code and presents the information in an easy-to-understand format.
+This Go application provides pilots, aviation enthusiasts, and weather watchers with human-readable interpretations of aviation weather data. It automatically fetches the latest METAR (Meteorological Aerodrome Report) and TAF (Terminal Aerodrome Forecast) for any airport with an ICAO code and presents the information in an easy-to-understand format.
 
 ## Features
 
@@ -25,37 +25,45 @@ This Go application provides aviation enthusiasts and weather watchers with huma
 
 ## Installation
 
+### Download Prebuilt Binaries
+
+The easiest way to install WxCraft is to download the prebuilt binaries:
+
+1. Visit the [releases page](https://github.com/rmitchellscott/WxCraft/releases)
+2. Download the appropriate version for your operating system:
+   - Windows: `wxcraft_windows_amd64.zip`
+   - macOS: `wxcraft_darwin_amd64.tar.gz` (Intel) or `wxcraft_darwin_arm64.tar.gz` (Apple Silicon)
+   - Linux: `wxcraft_linux_amd64.tar.gz`
+3. Extract the downloaded archive
+4. Move the executable to a location in your PATH (optional)
+
 ### Building from Source
 
+If you prefer to build from source:
+
 ```bash
-# Clone the repository
-git clone https://github.com/rmitchellscott/go-metar.git
-cd aviation-weather-decoder
-
-# Build the application
-go build -o metar
-
-# Make it executable (Linux/Mac)
-chmod +x metar
+git clone https://github.com/rmitchellscott/WxCraft.git
+cd WxCraft
+go build
 ```
 
 ## Usage
 
 ```bash
 # Basic usage - will prompt for an airport code
-./metar
+wxcraft
 
 # Specify an airport code
-./metar KJFK
+wxcraft KJFK
 
 # Show only METAR data
-./metar -metar KLAX
+wxcraft -metar KLAX
 
 # Show only TAF (forecast) data
-./metar -taf KBOS
+wxcraft -taf KBOS
 
 # Hide raw data
-./metar -no-raw EGLL
+wxcraft -no-raw EGLL
 ```
 
 ### Example Output
@@ -115,10 +123,6 @@ The application decodes a comprehensive range of weather phenomena, including:
 | SCT | Scattered clouds (3/8 to 4/8 coverage) |
 | BKN | Broken clouds (5/8 to 7/8 coverage) |
 | OVC | Overcast (8/8 coverage) |
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
