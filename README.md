@@ -1,4 +1,5 @@
 # WxCraft
+<img src="assets/logo.svg" alt="WxCraft Icon" width="170" align="right">
 
 A command-line tool for fetching, decoding, and displaying aviation weather reports (METAR) and forecasts (TAF).
 
