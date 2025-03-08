@@ -106,6 +106,7 @@ Remarks:
 - `-taf`: Show only TAF data
 - `-no-raw`: Hide the raw METAR/TAF data
 - `-no-decode`: Show only raw METAR/TAF data
+- `-no-color`: Disable color in the output
 
 ## Input Methods
 

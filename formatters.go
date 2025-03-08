@@ -1,10 +1,43 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/fatih/color"
 )
+
+// Command line flags
+var flagNoColor = flag.Bool("no-color", false, "Disable color output")
+
+// Color definitions using fatih/color
+var (
+	labelColor      = color.New(color.FgCyan)
+	valueColor      = color.New(color.FgWhite)
+	dateColor       = color.New(color.FgGreen)
+	sectionColor    = color.New(color.FgMagenta) // Changed to magenta as requested
+	numberColor     = color.New(color.FgGreen)
+	remarkCodeColor = color.New(color.FgGreen)
+
+	// Age-based colors
+	freshColor   = color.New(color.FgGreen)
+	warningColor = color.New(color.FgYellow) // Using yellow for warnings as requested
+	expiredColor = color.New(color.FgRed)
+)
+
+// init function to parse flags and set up color handling
+func init() {
+	// Parse command line flags
+	flag.Parse()
+
+	// Handle no-color flag
+	if *flagNoColor {
+		color.NoColor = true // disables colorized output globally
+	}
+}
 
 // formatVisibility converts raw visibility string to human-readable format
 func formatVisibility(visibility string) string {
@@ -107,27 +140,60 @@ func formatWeather(weather []string) string {
 	return strings.Join(weatherStrs, ", ")
 }
 
-// / FormatMETAR formats a METAR struct for display
+// getMetarAgeColor returns the appropriate color based on METAR age
+func getMetarAgeColor(t time.Time) *color.Color {
+	minutes := int(time.Since(t).Minutes())
+	if minutes > 60 {
+		return expiredColor
+	} else if minutes > 30 {
+		return warningColor
+	}
+	return freshColor
+}
+
+// getTafAgeColor returns the appropriate color based on TAF age
+func getTafAgeColor(t time.Time) *color.Color {
+	hours := time.Since(t).Hours()
+	if hours > 6.0 {
+		return expiredColor
+	} else if hours > 5.5 {
+		return warningColor
+	}
+	return freshColor
+}
+
+// FormatMETAR formats a METAR struct for display with colors
 func FormatMETAR(m METAR) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("Station: %s\n", m.Station))
+	// Station
+	labelColor.Fprint(&sb, "Station: ")
+	sb.WriteString(m.Station + "\n")
 
+	// Time
 	if !m.Time.IsZero() {
 		relTime := relativeTimeString(m.Time)
-		sb.WriteString(fmt.Sprintf("Time: %s %s\n", m.Time.Format("2006-01-02 15:04 UTC"), relTime))
+		ageColor := getMetarAgeColor(m.Time)
+
+		labelColor.Fprint(&sb, "Time: ")
+		dateColor.Fprint(&sb, m.Time.Format("2006-01-02 15:04 UTC"))
+		sb.WriteString(" ")
+		ageColor.Fprint(&sb, relTime)
+		sb.WriteString("\n")
 	}
 
 	// Wind
 	windStr := formatWind(m.Wind)
 	if windStr != "" {
-		sb.WriteString("Wind: " + windStr + "\n")
+		labelColor.Fprint(&sb, "Wind: ")
+		sb.WriteString(windStr + "\n")
 	}
 
 	// Visibility
 	visibilityDesc := formatVisibility(m.Visibility)
 	if visibilityDesc != "" {
-		sb.WriteString(fmt.Sprintf("Visibility: %s\n", visibilityDesc))
+		labelColor.Fprint(&sb, "Visibility: ")
+		sb.WriteString(visibilityDesc + "\n")
 	}
 
 	// Check if we have only CLR clouds
@@ -151,10 +217,12 @@ func FormatMETAR(m METAR) string {
 	// Weather
 	if len(m.Weather) > 0 {
 		weatherStr := formatWeather(m.Weather)
-		sb.WriteString(fmt.Sprintf("Weather: %s\n", capitalizeFirst(weatherStr)))
+		labelColor.Fprint(&sb, "Weather: ")
+		sb.WriteString(capitalizeFirst(weatherStr) + "\n")
 	} else if hasClear {
 		// No weather but we have CLR or SKC, so show "Clear" as the weather
-		sb.WriteString("Weather: Clear\n")
+		labelColor.Fprint(&sb, "Weather: ")
+		sb.WriteString("Clear\n")
 	}
 
 	// Clouds - only show if we have clouds other than CLR/SKC
@@ -175,53 +243,74 @@ func FormatMETAR(m METAR) string {
 
 		if len(cloudsToDisplay) > 0 {
 			cloudStr := formatClouds(cloudsToDisplay)
-			sb.WriteString(fmt.Sprintf("Clouds: %s\n", capitalizeFirst(cloudStr)))
+			labelColor.Fprint(&sb, "Clouds: ")
+			sb.WriteString(capitalizeFirst(cloudStr) + "\n")
 		}
 	}
 
 	// Temperature with Fahrenheit conversion
 	tempF := CelsiusToFahrenheit(m.Temperature)
-	sb.WriteString(fmt.Sprintf("Temperature: %d°C | %d°F\n", m.Temperature, tempF))
+	labelColor.Fprint(&sb, "Temperature: ")
+	sb.WriteString(fmt.Sprintf("%d°C | %d°F\n", m.Temperature, tempF))
 
 	// Dew point with Fahrenheit conversion
 	dewPointF := CelsiusToFahrenheit(m.DewPoint)
-	sb.WriteString(fmt.Sprintf("Dew Point: %d°C | %d°F\n", m.DewPoint, dewPointF))
+	labelColor.Fprint(&sb, "Dew Point: ")
+	sb.WriteString(fmt.Sprintf("%d°C | %d°F\n", m.DewPoint, dewPointF))
 
 	// Pressure with millibar conversion
 	if m.Pressure > 0 {
 		pressureMb := InHgToMillibars(m.Pressure)
-		sb.WriteString(fmt.Sprintf("Pressure: %.2f inHg | %.1f mbar\n", m.Pressure, pressureMb))
+		labelColor.Fprint(&sb, "Pressure: ")
+		sb.WriteString(fmt.Sprintf("%.2f inHg | %.1f mbar\n", m.Pressure, pressureMb))
 	}
 
 	// Remarks
 	if len(m.Remarks) > 0 {
-		sb.WriteString("\nRemarks:\n")
+		sb.WriteString("\n")
+		sectionColor.Fprintln(&sb, "Remarks:")
 		for _, remark := range m.Remarks {
-			sb.WriteString(fmt.Sprintf("  %s: %s\n", remark.Raw, capitalizeFirst(remark.Description)))
+			sb.WriteString("  ")
+			remarkCodeColor.Fprint(&sb, remark.Raw+": ")
+			sb.WriteString(capitalizeFirst(remark.Description) + "\n")
 		}
 	}
 
 	return sb.String()
 }
 
-// FormatTAF formats a TAF struct for display
+// FormatTAF formats a TAF struct for display with colors
 func FormatTAF(t TAF) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("Station: %s\n", t.Station))
+	// Station
+	labelColor.Fprint(&sb, "Station: ")
+	sb.WriteString(t.Station + "\n")
 
+	// Issued time
 	if !t.Time.IsZero() {
 		relTime := relativeTimeString(t.Time)
-		sb.WriteString(fmt.Sprintf("Issued: %s %s\n", t.Time.Format("2006-01-02 15:04 UTC"), relTime))
+		ageColor := getTafAgeColor(t.Time)
+
+		labelColor.Fprint(&sb, "Issued: ")
+		dateColor.Fprint(&sb, t.Time.Format("2006-01-02 15:04 UTC"))
+		sb.WriteString(" ")
+		ageColor.Fprint(&sb, relTime)
+		sb.WriteString("\n")
 	}
 
+	// Valid period
 	if !t.ValidFrom.IsZero() && !t.ValidTo.IsZero() {
-		sb.WriteString(fmt.Sprintf("Valid: %s to %s\n",
-			t.ValidFrom.Format("2006-01-02 15:04 UTC"),
-			t.ValidTo.Format("2006-01-02 15:04 UTC")))
+		labelColor.Fprint(&sb, "Valid: ")
+		dateColor.Fprint(&sb, t.ValidFrom.Format("2006-01-02 15:04 UTC"))
+		sb.WriteString(" to ")
+		dateColor.Fprint(&sb, t.ValidTo.Format("2006-01-02 15:04 UTC"))
+		sb.WriteString("\n")
 	}
 
-	sb.WriteString("\nForecast Periods:\n")
+	// Forecast periods
+	sb.WriteString("\n")
+	sectionColor.Fprintln(&sb, "Forecast Periods:")
 
 	for i, forecast := range t.Forecasts {
 		// Format the forecast type
@@ -239,17 +328,22 @@ func FormatTAF(t TAF) string {
 			periodType = forecast.Type
 		}
 
-		sb.WriteString(fmt.Sprintf("\n%d. %s", i+1, periodType))
+		// Period header with number
+		sb.WriteString("\n")
+		numberColor.Fprintf(&sb, "%d. ", i+1)
+		sb.WriteString(periodType)
 
 		// Time period
 		if !forecast.From.IsZero() {
 			if forecast.To.IsZero() {
-				sb.WriteString(fmt.Sprintf(" %s until end of forecast",
-					forecast.From.Format("2006-01-02 15:04 UTC")))
+				sb.WriteString(" ")
+				dateColor.Fprint(&sb, forecast.From.Format("2006-01-02 15:04 UTC"))
+				sb.WriteString(" until end of forecast")
 			} else {
-				sb.WriteString(fmt.Sprintf(" %s to %s",
-					forecast.From.Format("2006-01-02 15:04 UTC"),
-					forecast.To.Format("2006-01-02 15:04 UTC")))
+				sb.WriteString(" ")
+				dateColor.Fprint(&sb, forecast.From.Format("2006-01-02 15:04 UTC"))
+				sb.WriteString(" to ")
+				dateColor.Fprint(&sb, forecast.To.Format("2006-01-02 15:04 UTC"))
 			}
 		}
 		sb.WriteString("\n")
@@ -257,25 +351,33 @@ func FormatTAF(t TAF) string {
 		// Wind
 		windStr := formatWind(forecast.Wind)
 		if windStr != "" {
-			sb.WriteString(fmt.Sprintf("   Wind: %s\n", windStr))
+			sb.WriteString("   ")
+			labelColor.Fprint(&sb, "Wind: ")
+			sb.WriteString(windStr + "\n")
 		}
 
 		// Visibility
 		visibilityDesc := formatVisibility(forecast.Visibility)
 		if visibilityDesc != "" {
-			sb.WriteString(fmt.Sprintf("   Visibility: %s\n", visibilityDesc))
+			sb.WriteString("   ")
+			labelColor.Fprint(&sb, "Visibility: ")
+			sb.WriteString(visibilityDesc + "\n")
 		}
 
 		// Weather
 		weatherStr := formatWeather(forecast.Weather)
 		if weatherStr != "" {
-			sb.WriteString(fmt.Sprintf("   Weather: %s\n", capitalizeFirst(weatherStr)))
+			sb.WriteString("   ")
+			labelColor.Fprint(&sb, "Weather: ")
+			sb.WriteString(capitalizeFirst(weatherStr) + "\n")
 		}
 
 		// Clouds
 		cloudStr := formatClouds(forecast.Clouds)
 		if cloudStr != "" {
-			sb.WriteString(fmt.Sprintf("   Clouds: %s\n", capitalizeFirst(cloudStr)))
+			sb.WriteString("   ")
+			labelColor.Fprint(&sb, "Clouds: ")
+			sb.WriteString(capitalizeFirst(cloudStr) + "\n")
 		}
 	}
 
