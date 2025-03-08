@@ -35,6 +35,8 @@ func main() {
 	noRawFlag := flag.Bool("no-raw", false, "Hide raw data")
 	noDecodeFlag := flag.Bool("no-decode", false, "Show only raw data without decoding")
 	flagNoColor := flag.Bool("no-color", false, "Disable color output")
+	nearestFlag := flag.Bool("nearest", false, "Find nearest airport and fetch its METAR")
+	radiusFlag := flag.Float64("radius", 50.0, "Search radius in miles when finding nearest airport (default 50)")
 	flag.Parse()
 
 	if *flagNoColor {
@@ -44,24 +46,54 @@ func main() {
 	// First check stdin for piped data
 	stationCode, rawInput, stdinHasData := readFromStdin()
 
-	// If no stdin data, get station code from args or prompt
+	// If no stdin data, get station code from args or nearest airport or prompt
 	if !stdinHasData {
 		var err error
 
-		// Try command line args first
-		remainingArgs := flag.Args()
-		if len(remainingArgs) > 0 {
-			stationCode, err = getStationCodeFromArgs(remainingArgs)
+		if *nearestFlag {
+			// Find nearest airport
+			fmt.Println("Finding nearest airport to your location...")
+			location, err := GetLocation()
+			if err != nil {
+				fmt.Printf("Error: Failed to get your location: %v\n", err)
+				return
+			}
+
+			fmt.Printf("Your location: %s, %s (%.4f, %.4f)\n",
+				location.City, location.Country,
+				location.Latitude, location.Longitude)
+
+			// Get the nearest airport ICAO code
+			fmt.Printf("Searching for airports within %.1f miles...\n", *radiusFlag)
+			icaoCode, distance, err := GetNearestAirportICAO(
+				location.Latitude,
+				location.Longitude,
+				*radiusFlag,
+			)
+
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 				return
 			}
+
+			fmt.Printf("Nearest airport: %s (%.1f miles away)\n", icaoCode, distance)
+			stationCode = icaoCode
 		} else {
-			// Prompt the user
-			stationCode, err = promptForStationCode()
-			if err != nil {
-				fmt.Printf("Error: %v\n", err)
-				return
+			// Try command line args first
+			remainingArgs := flag.Args()
+			if len(remainingArgs) > 0 {
+				stationCode, err = getStationCodeFromArgs(remainingArgs)
+				if err != nil {
+					fmt.Printf("Error: %v\n", err)
+					return
+				}
+			} else {
+				// Prompt the user
+				stationCode, err = promptForStationCode()
+				if err != nil {
+					fmt.Printf("Error: %v\n", err)
+					return
+				}
 			}
 		}
 	}
