@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -28,6 +29,17 @@ func DecodeTAF(raw string) TAF {
 		t.Station = parts[1]
 	} else {
 		t.Station = parts[0]
+	}
+	siteInfo, err := FetchSiteInfo(t.Station)
+	if err != nil {
+		fmt.Printf("Warning: Could not fetch site info for %s: %v\n", t.Station, err)
+		t.SiteInfo = SiteInfo{
+			Name:    t.Station,
+			State:   "",
+			Country: "",
+		}
+	} else {
+		t.SiteInfo = siteInfo
 	}
 
 	// Parse issuance time
@@ -196,7 +208,7 @@ func DecodeTAF(raw string) TAF {
 	return t
 }
 
-// DecodeMETAR decodes a raw METAR string into a METAR struct
+// / DecodeMETAR decodes a raw METAR string into a METAR struct with site information
 func DecodeMETAR(raw string) METAR {
 	m := METAR{WeatherData: WeatherData{Raw: raw}}
 	parts := strings.Fields(raw)
@@ -207,6 +219,20 @@ func DecodeMETAR(raw string) METAR {
 
 	// Station code
 	m.Station = parts[0]
+
+	// Fetch site information
+	siteInfo, err := FetchSiteInfo(m.Station)
+	if err != nil {
+		// Use default site info but continue
+		fmt.Printf("Warning: Could not fetch site info for %s: %v\n", m.Station, err)
+		m.SiteInfo = SiteInfo{
+			Name:    m.Station,
+			State:   "",
+			Country: "",
+		}
+	} else {
+		m.SiteInfo = siteInfo
+	}
 
 	// Time
 	if timeRegex.MatchString(parts[1]) {
@@ -251,7 +277,6 @@ func DecodeMETAR(raw string) METAR {
 			continue
 		}
 
-		// Clouds
 		// Clouds
 		if cloudRegex.MatchString(part) {
 			cloud := parseCloud(part)

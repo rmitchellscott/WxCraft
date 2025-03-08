@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,9 +8,6 @@ import (
 
 	"github.com/fatih/color"
 )
-
-// Command line flags
-var flagNoColor = flag.Bool("no-color", false, "Disable color output")
 
 // Color definitions using fatih/color
 var (
@@ -27,17 +23,6 @@ var (
 	warningColor = color.New(color.FgYellow) // Using yellow for warnings as requested
 	expiredColor = color.New(color.FgRed)
 )
-
-// init function to parse flags and set up color handling
-func init() {
-	// Parse command line flags
-	flag.Parse()
-
-	// Handle no-color flag
-	if *flagNoColor {
-		color.NoColor = true // disables colorized output globally
-	}
-}
 
 // formatVisibility converts raw visibility string to human-readable format
 func formatVisibility(visibility string) string {
@@ -168,7 +153,16 @@ func FormatMETAR(m METAR) string {
 
 	// Station
 	labelColor.Fprint(&sb, "Station: ")
-	sb.WriteString(m.Station + "\n")
+	sb.WriteString(m.Station)
+
+	// Add site info if available
+	if m.SiteInfo.Name != "" && m.SiteInfo.Name != m.Station {
+		sb.WriteString(" (")
+		siteInfo := formatSiteInfo(m.SiteInfo)
+		sb.WriteString(siteInfo)
+		sb.WriteString(")")
+	}
+	sb.WriteString("\n")
 
 	// Time
 	if !m.Time.IsZero() {
@@ -279,13 +273,41 @@ func FormatMETAR(m METAR) string {
 	return sb.String()
 }
 
+// Helper function to format site information
+func formatSiteInfo(info SiteInfo) string {
+	parts := []string{}
+
+	if info.Name != "" {
+		parts = append(parts, info.Name)
+	}
+
+	if info.State != "" {
+		parts = append(parts, info.State)
+	}
+
+	if info.Country != "" {
+		parts = append(parts, info.Country)
+	}
+
+	return strings.Join(parts, ", ")
+}
+
 // FormatTAF formats a TAF struct for display with colors
 func FormatTAF(t TAF) string {
 	var sb strings.Builder
 
 	// Station
 	labelColor.Fprint(&sb, "Station: ")
-	sb.WriteString(t.Station + "\n")
+	sb.WriteString(t.Station)
+
+	// Add site info if available
+	if t.SiteInfo.Name != "" && t.SiteInfo.Name != t.Station {
+		sb.WriteString(" (")
+		siteInfo := formatSiteInfo(t.SiteInfo)
+		sb.WriteString(siteInfo)
+		sb.WriteString(")")
+	}
+	sb.WriteString("\n")
 
 	// Issued time
 	if !t.Time.IsZero() {
@@ -407,4 +429,49 @@ func formatNumberWithCommas(n int) string {
 	}
 
 	return result
+}
+
+// FormatSiteInfo returns a formatted string with the site information
+func (m METAR) FormatSiteInfo() string {
+	parts := []string{}
+
+	if m.SiteInfo.Name != "" {
+		parts = append(parts, m.SiteInfo.Name)
+	}
+
+	if m.SiteInfo.State != "" {
+		parts = append(parts, m.SiteInfo.State)
+	}
+
+	if m.SiteInfo.Country != "" {
+		parts = append(parts, m.SiteInfo.Country)
+	}
+
+	if len(parts) == 0 {
+		return m.Station // Fallback to station code if no site info
+	}
+
+	return strings.Join(parts, ", ")
+}
+
+func (t TAF) FormatSiteInfo() string {
+	parts := []string{}
+
+	if t.SiteInfo.Name != "" {
+		parts = append(parts, t.SiteInfo.Name)
+	}
+
+	if t.SiteInfo.State != "" {
+		parts = append(parts, t.SiteInfo.State)
+	}
+
+	if t.SiteInfo.Country != "" {
+		parts = append(parts, t.SiteInfo.Country)
+	}
+
+	if len(parts) == 0 {
+		return t.Station // Fallback to station code if no site info
+	}
+
+	return strings.Join(parts, ", ")
 }

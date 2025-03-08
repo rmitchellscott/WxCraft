@@ -165,9 +165,17 @@ type Remark struct {
 	Description string
 }
 
+// SiteInfo represents the location information for a station
+type SiteInfo struct {
+	Name    string
+	State   string
+	Country string
+}
+
 // METAR represents a decoded METAR weather report
 type METAR struct {
 	WeatherData
+	SiteInfo    SiteInfo
 	Wind        Wind
 	Visibility  string
 	Weather     []string
@@ -193,6 +201,7 @@ type Forecast struct {
 // TAF represents a decoded Terminal Aerodrome Forecast
 type TAF struct {
 	WeatherData
+	SiteInfo  SiteInfo
 	ValidFrom time.Time
 	ValidTo   time.Time
 	Forecasts []Forecast
