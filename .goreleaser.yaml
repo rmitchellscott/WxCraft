@@ -37,6 +37,27 @@ builds:
       - goos: windows
         goarch: arm
         goarm: 7
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs'
+      - '^test'
+  groups:
+    - title: Breaking Changes
+      order: 0
+      regexp: "^.*!:"
+    - title: Features
+      order: 1
+      regexp: "(feat)"
+    - title: Fixes
+      order: 2
+      regexp: "(fix|perf)"
+    - title: Dependencies
+      order: 999
+      regexp: '\(deps\):'
+    - title: Others
+      order: 998
 brews:
   - homepage: https://github.com/rmitchellscott/WxCraft
     description: METAR and TAF retrieval and decoding
@@ -63,13 +84,6 @@ archives:
     format_overrides:
       - goos: windows
         formats: zip
-
-changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
 
 release:
   footer: >-
