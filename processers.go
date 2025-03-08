@@ -353,58 +353,95 @@ func processRemarks(remarkParts []string) []Remark {
 	return remarks
 }
 
-// processMETAR fetches, decodes and displays METAR data
-func processMETAR(stationCode, rawInput string, stdinHasData, noRaw, noDecode bool) {
-	var metar string
+// processMETAR fetches, decodes and displays METAR data with site information
+func processMETAR(stationCode string, rawInput string, stdinHasData bool, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool) {
+	var rawMetar string
 	var err error
 
-	if stdinHasData && rawInput != "" {
-		// Use the piped data
-		metar = rawInput
+	// Get the raw METAR data
+	if stdinHasData {
+		rawMetar = rawInput
 	} else {
-		// Fetch from the service
-		fmt.Printf("Fetching METAR for %s...\n", stationCode)
-		metar, err = FetchMETAR(stationCode)
+		rawMetar, err = FetchMETAR(stationCode)
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
+			fmt.Printf("Error fetching METAR: %v\n", err)
 			return
 		}
 	}
 
-	// Show raw METAR by default, unless --no-raw flag is used
+	// Print the raw METAR if requested
 	if !noRaw {
-		fmt.Println("\nRaw METAR:")
-		fmt.Println(metar)
+		fmt.Println("Raw METAR:")
+		fmt.Println(rawMetar)
+
+		// Add a line break if we're also showing decoded data
+		if !noDecode {
+			fmt.Println()
+		}
 	}
 
-	// Decode and display METAR unless --no-decode flag is used
+	// Decode and display the METAR if requested
 	if !noDecode {
-		fmt.Println("\nDecoded METAR:")
-		decoded := DecodeMETAR(metar)
-		fmt.Print(FormatMETAR(decoded))
+		// Decode the METAR
+		metar := DecodeMETAR(rawMetar)
+
+		// Add site information if we have it, otherwise fetch it
+		if siteInfoFetched {
+			metar.SiteInfo = siteInfo
+		} else {
+			fetchedSiteInfo, err := FetchSiteInfo(stationCode)
+			if err != nil {
+				fmt.Printf("Warning: Could not fetch site info for %s: %v\n", stationCode, err)
+			} else {
+				metar.SiteInfo = fetchedSiteInfo
+			}
+		}
+
+		// Display the decoded METAR
+		fmt.Println("Decoded METAR:")
+		fmt.Print(FormatMETAR(metar))
 	}
 }
 
-// processTAF fetches, decodes and displays TAF data
-func processTAF(stationCode string, noRaw, noDecode bool) {
-	fmt.Printf("Fetching TAF for %s...\n", stationCode)
-
-	taf, err := FetchTAF(stationCode)
+// processTAF fetches, decodes and displays TAF data with site information
+func processTAF(stationCode string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool) {
+	// Fetch raw TAF
+	rawTAF, err := FetchTAF(stationCode)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("Error fetching TAF: %v\n", err)
 		return
 	}
 
-	// Show raw TAF by default, unless --no-raw flag is used
+	// Print the raw TAF if requested
 	if !noRaw {
-		fmt.Println("\nRaw TAF:")
-		fmt.Println(taf)
+		fmt.Println("Raw TAF:")
+		fmt.Println(rawTAF)
+
+		// Add a line break if we're also showing decoded data
+		if !noDecode {
+			fmt.Println()
+		}
 	}
 
-	// Decode and display TAF unless --no-decode flag is used
+	// Decode and display the TAF if requested
 	if !noDecode {
-		fmt.Println("\nDecoded TAF:")
-		decoded := DecodeTAF(taf)
-		fmt.Print(FormatTAF(decoded))
+		// Decode the TAF
+		taf := DecodeTAF(rawTAF)
+
+		// Add site information if we have it, otherwise fetch it
+		if siteInfoFetched {
+			taf.SiteInfo = siteInfo
+		} else {
+			fetchedSiteInfo, err := FetchSiteInfo(stationCode)
+			if err != nil {
+				fmt.Printf("Warning: Could not fetch site info for %s: %v\n", stationCode, err)
+			} else {
+				taf.SiteInfo = fetchedSiteInfo
+			}
+		}
+
+		// Display the decoded TAF
+		fmt.Println("Decoded TAF:")
+		fmt.Print(FormatTAF(taf))
 	}
 }

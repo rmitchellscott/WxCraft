@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
+	"time"
 )
 
 // fetchData fetches data from a URL for a given station code
@@ -42,4 +44,77 @@ func FetchMETAR(stationCode string) (string, error) {
 // FetchTAF fetches the raw TAF for a given station code
 func FetchTAF(stationCode string) (string, error) {
 	return fetchData("https://aviationweather.gov/cgi-bin/data/taf.php?ids=%s", stationCode, "TAF")
+}
+
+// FetchSiteInfo fetches site information for a station from the Aviation Weather API
+func FetchSiteInfo(stationCode string) (SiteInfo, error) {
+	// Default site info in case of error
+	defaultSiteInfo := SiteInfo{
+		Name:    stationCode,
+		State:   "",
+		Country: "",
+	}
+
+	// API endpoint for station information
+	url := fmt.Sprintf("https://aviationweather.gov/api/data/stationinfo?ids=%s", stationCode)
+
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	// Make the request
+	resp, err := client.Get(url)
+	if err != nil {
+		return defaultSiteInfo, fmt.Errorf("error fetching site data: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return defaultSiteInfo, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return defaultSiteInfo, fmt.Errorf("error reading response: %w", err)
+	}
+
+	// Parse the text response using regex
+	text := string(body)
+
+	// Extract site information using regular expressions
+	var siteName, state, country string
+
+	// Match Site: line
+	siteRegex := regexp.MustCompile(`Site:\s+(.+)`)
+	siteMatches := siteRegex.FindStringSubmatch(text)
+	if len(siteMatches) > 1 {
+		siteName = strings.TrimSpace(siteMatches[1])
+	}
+
+	// Match State: line
+	stateRegex := regexp.MustCompile(`State:\s+(.+)`)
+	stateMatches := stateRegex.FindStringSubmatch(text)
+	if len(stateMatches) > 1 {
+		state = strings.TrimSpace(stateMatches[1])
+	}
+
+	// Match Country: line
+	countryRegex := regexp.MustCompile(`Country:\s+(.+)`)
+	countryMatches := countryRegex.FindStringSubmatch(text)
+	if len(countryMatches) > 1 {
+		country = strings.TrimSpace(countryMatches[1])
+	}
+
+	// If we couldn't extract site name, return an error (state/country optional)
+	if siteName == "" {
+		return defaultSiteInfo, fmt.Errorf("could not extract site name from response")
+	}
+
+	return SiteInfo{
+		Name:    siteName,
+		State:   state,
+		Country: country,
+	}, nil
 }
