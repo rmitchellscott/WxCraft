@@ -26,6 +26,7 @@ func processRemarks(remarkParts []string) []Remark {
 		"BECMG":  "becoming",
 		"VIRGA":  "precipitation not reaching ground",
 		"FROPA":  "frontal passage",
+		"$":      "weather observing equipment requires maintenance",
 	}
 
 	// Process individual remarks or groups of related remarks
