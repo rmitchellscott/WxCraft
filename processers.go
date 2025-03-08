@@ -354,7 +354,7 @@ func processRemarks(remarkParts []string) []Remark {
 }
 
 // processMETAR fetches, decodes and displays METAR data
-func processMETAR(stationCode, rawInput string, stdinHasData, noRaw bool) {
+func processMETAR(stationCode, rawInput string, stdinHasData, noRaw, noDecode bool) {
 	var metar string
 	var err error
 
@@ -377,13 +377,16 @@ func processMETAR(stationCode, rawInput string, stdinHasData, noRaw bool) {
 		fmt.Println(metar)
 	}
 
-	fmt.Println("\nDecoded METAR:")
-	decoded := DecodeMETAR(metar)
-	fmt.Print(FormatMETAR(decoded))
+	// Decode and display METAR unless --no-decode flag is used
+	if !noDecode {
+		fmt.Println("\nDecoded METAR:")
+		decoded := DecodeMETAR(metar)
+		fmt.Print(FormatMETAR(decoded))
+	}
 }
 
 // processTAF fetches, decodes and displays TAF data
-func processTAF(stationCode string, noRaw bool) {
+func processTAF(stationCode string, noRaw, noDecode bool) {
 	fmt.Printf("Fetching TAF for %s...\n", stationCode)
 
 	taf, err := FetchTAF(stationCode)
@@ -398,7 +401,10 @@ func processTAF(stationCode string, noRaw bool) {
 		fmt.Println(taf)
 	}
 
-	fmt.Println("\nDecoded TAF:")
-	decoded := DecodeTAF(taf)
-	fmt.Print(FormatTAF(decoded))
+	// Decode and display TAF unless --no-decode flag is used
+	if !noDecode {
+		fmt.Println("\nDecoded TAF:")
+		decoded := DecodeTAF(taf)
+		fmt.Print(FormatTAF(decoded))
+	}
 }

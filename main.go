@@ -31,6 +31,7 @@ func main() {
 	metarOnly := flag.Bool("metar", false, "Show only METAR")
 	tafOnly := flag.Bool("taf", false, "Show only TAF")
 	noRawFlag := flag.Bool("no-raw", false, "Hide raw data")
+	noDecodeFlag := flag.Bool("no-decode", false, "Show only raw data without decoding")
 	flag.Parse()
 
 	// First check stdin for piped data
@@ -60,7 +61,7 @@ func main() {
 
 	// Fetch and display METAR if requested or by default
 	if !*tafOnly {
-		processMETAR(stationCode, rawInput, stdinHasData, *noRawFlag)
+		processMETAR(stationCode, rawInput, stdinHasData, *noRawFlag, *noDecodeFlag)
 	}
 
 	// Fetch and display TAF if requested or by default
@@ -70,6 +71,6 @@ func main() {
 			fmt.Println("\n----------------------------------\n")
 		}
 
-		processTAF(stationCode, *noRawFlag)
+		processTAF(stationCode, *noRawFlag, *noDecodeFlag)
 	}
 }
