@@ -63,6 +63,12 @@ wxcraft
 # Specify an airport code
 wxcraft KJFK
 
+# Specify a US ZIP code
+wxcraft 90210
+
+# Show the METAR for the nearest airport by IP location
+wxcraft -nearest
+
 # Show only METAR data
 wxcraft -metar KLAX
 
@@ -104,6 +110,8 @@ Remarks:
 
 - `-metar`: Show only METAR data
 - `-taf`: Show only TAF data
+- `-nearest`: Select the closest ICAO station by geolocating IP address
+- `-radius 100`: Set the search radius for nearest airport (default: 50 miles)
 - `-no-raw`: Hide the raw METAR/TAF data
 - `-no-decode`: Show only raw METAR/TAF data
 - `-no-color`: Disable color in the output

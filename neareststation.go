@@ -7,8 +7,15 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 )
+
+// Position represents a geographic coordinate
+type Position struct {
+	Latitude  float64
+	Longitude float64
+}
 
 // Station represents an airport or weather station from the AWC API
 type Station struct {
@@ -21,27 +28,18 @@ type Station struct {
 	Elevation int     `json:"elev"`
 }
 
-// Position represents a geographic coordinate
-type Position struct {
-	Latitude  float64
-	Longitude float64
-}
-
-// StationWithDistance extends Station with distance from user
-type StationWithDistance struct {
-	Station  Station
-	Distance float64 // Distance in miles
-}
+// Regular expression for matching US zipcodes
+var zipRegex = regexp.MustCompile(`^\d{5}(-\d{4})?$`)
 
 // degreesToRadians converts degrees to radians
 func degreesToRadians(degrees float64) float64 {
 	return degrees * math.Pi / 180
 }
 
-// calculateDistance uses the Haversine formula to determine the distance between two points on Earth
+// calculateDistance uses the Haversine formula to determine the distance between two points
 func calculateDistance(pos1, pos2 Position) float64 {
 	// Earth's radius in miles
-	earthRadius := 3958.8 // miles (instead of 6371.0 km)
+	earthRadius := 3958.8 // miles
 
 	// Convert latitude and longitude from degrees to radians
 	lat1 := degreesToRadians(pos1.Latitude)
@@ -122,38 +120,7 @@ func findNearbyStations(position Position, radiusMiles float64) ([]Station, erro
 	return stations, nil
 }
 
-// findNearestStations returns the n nearest stations to a given position
-func findNearestStations(position Position, stations []Station, limit int) []StationWithDistance {
-	var stationsWithDistance []StationWithDistance
-
-	// Calculate distances
-	for _, station := range stations {
-		stationPos := Position{
-			Latitude:  station.Latitude,
-			Longitude: station.Longitude,
-		}
-		distance := calculateDistance(position, stationPos)
-		stationsWithDistance = append(stationsWithDistance, StationWithDistance{
-			Station:  station,
-			Distance: distance,
-		})
-	}
-
-	// Sort by distance
-	sort.Slice(stationsWithDistance, func(i, j int) bool {
-		return stationsWithDistance[i].Distance < stationsWithDistance[j].Distance
-	})
-
-	// Limit results
-	if len(stationsWithDistance) > limit {
-		stationsWithDistance = stationsWithDistance[:limit]
-	}
-
-	return stationsWithDistance
-}
-
 // GetNearestAirportICAO finds the nearest airport's ICAO code
-// Returns the ICAO code and the distance in miles
 func GetNearestAirportICAO(latitude, longitude float64, searchRadiusMiles float64) (string, float64, error) {
 	position := Position{
 		Latitude:  latitude,
@@ -170,11 +137,89 @@ func GetNearestAirportICAO(latitude, longitude float64, searchRadiusMiles float6
 		return "", 0, fmt.Errorf("no airports found within %.1f miles", searchRadiusMiles)
 	}
 
-	// Find the nearest one
-	nearest := findNearestStations(position, stations, 1)
-	if len(nearest) == 0 {
+	// Calculate distances and sort
+	type stationDistance struct {
+		station  Station
+		distance float64
+	}
+
+	var stationsWithDistance []stationDistance
+	for _, station := range stations {
+		stationPos := Position{
+			Latitude:  station.Latitude,
+			Longitude: station.Longitude,
+		}
+		distance := calculateDistance(position, stationPos)
+		stationsWithDistance = append(stationsWithDistance, stationDistance{
+			station:  station,
+			distance: distance,
+		})
+	}
+
+	// Sort by distance
+	sort.Slice(stationsWithDistance, func(i, j int) bool {
+		return stationsWithDistance[i].distance < stationsWithDistance[j].distance
+	})
+
+	if len(stationsWithDistance) == 0 {
 		return "", 0, fmt.Errorf("failed to find nearest airport")
 	}
 
-	return nearest[0].Station.ICAO, nearest[0].Distance, nil
+	return stationsWithDistance[0].station.ICAO, stationsWithDistance[0].distance, nil
+}
+
+// ProcessAutoCommand handles the AUTO command to find the nearest airport
+func ProcessAutoCommand(radiusMiles float64) (string, error) {
+	fmt.Println("Finding nearest airport to your location...")
+	location, err := GetLocation()
+	if err != nil {
+		return "", fmt.Errorf("failed to get your location: %v", err)
+	}
+
+	fmt.Printf("Your location: %s, %s (%.4f, %.4f)\n",
+		location.City, location.Country,
+		location.Latitude, location.Longitude)
+
+	// Get the nearest airport ICAO code
+	fmt.Printf("Searching for airports within %.1f miles...\n", radiusMiles)
+	icaoCode, distance, err := GetNearestAirportICAO(
+		location.Latitude,
+		location.Longitude,
+		radiusMiles,
+	)
+
+	if err != nil {
+		return "", err
+	}
+
+	fmt.Printf("Nearest airport: %s (%.1f miles away)\n", icaoCode, distance)
+	return icaoCode, nil
+}
+
+// ProcessZipcode handles the zipcode input to find the nearest airport
+func ProcessZipcode(zipcode string, radiusMiles float64) (string, error) {
+	fmt.Printf("Looking up location for zipcode %s...\n", zipcode)
+	location, err := GetLocationByZipcode(zipcode)
+	if err != nil {
+		return "", fmt.Errorf("failed to get location for zipcode: %v", err)
+	}
+
+	fmt.Printf("Zipcode location: %s, %s, %s (%.4f, %.4f)\n",
+		location.City, location.Region, location.Country,
+		location.Latitude, location.Longitude)
+
+	// Get the nearest airport ICAO code
+	fmt.Printf("Searching for airports within %.1f miles...\n", radiusMiles)
+	icaoCode, distance, err := GetNearestAirportICAO(
+		location.Latitude,
+		location.Longitude,
+		radiusMiles,
+	)
+
+	if err != nil {
+		return "", err
+	}
+
+	fmt.Printf("Nearest airport: %s (%.1f miles away)\n", icaoCode, distance)
+	return icaoCode, nil
 }
