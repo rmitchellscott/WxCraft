@@ -14,13 +14,14 @@ var (
 	labelColor      = color.New(color.FgCyan)
 	valueColor      = color.New(color.FgWhite)
 	dateColor       = color.New(color.FgGreen)
-	sectionColor    = color.New(color.FgMagenta) // Changed to magenta as requested
+	sectionColor    = color.New(color.FgBlue)
 	numberColor     = color.New(color.FgGreen)
 	remarkCodeColor = color.New(color.FgGreen)
+	functionColor   = color.New(color.FgMagenta)
 
 	// Age-based colors
 	freshColor   = color.New(color.FgGreen)
-	warningColor = color.New(color.FgYellow) // Using yellow for warnings as requested
+	warningColor = color.New(color.FgYellow)
 	expiredColor = color.New(color.FgRed)
 )
 
