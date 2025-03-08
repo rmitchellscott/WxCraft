@@ -205,6 +205,45 @@ func processRemarks(remarkParts []string) []Remark {
 			}
 		}
 
+		// Handle 24-hour maximum and minimum temperature (format: 4snTxTxTxsnTnTnTn)
+		if len(part) == 9 && part[0] == '4' {
+			maxTempSign := part[1:2]
+			maxTempStr := part[2:5]
+			minTempSign := part[5:6]
+			minTempStr := part[6:9]
+
+			// Parse maximum temperature
+			maxTemp, err1 := strconv.Atoi(maxTempStr)
+			// Parse minimum temperature
+			minTemp, err2 := strconv.Atoi(minTempStr)
+
+			if err1 == nil && err2 == nil {
+				// Convert to degrees Celsius
+				maxValue := float64(maxTemp) / 10.0
+				minValue := float64(minTemp) / 10.0
+
+				// Apply signs
+				if maxTempSign == "1" {
+					maxValue = -maxValue // negative if sign digit is 1
+				}
+				if minTempSign == "1" {
+					minValue = -minValue // negative if sign digit is 1
+				}
+
+				// Calculate Fahrenheit values
+				maxValueF := (maxValue * 9 / 5) + 32
+				minValueF := (minValue * 9 / 5) + 32
+
+				remarks = append(remarks, Remark{
+					Raw: part,
+					Description: fmt.Sprintf("24-hour temperature range: max %.1f°C (%.1f°F), min %.1f°C (%.1f°F)",
+						maxValue, maxValueF, minValue, minValueF),
+				})
+				i++
+				continue
+			}
+		}
+
 		// Handle 3-hour pressure change (format: 3PPPP)
 		if len(part) == 5 && part[0] == '3' {
 			pressStr := part[1:]
