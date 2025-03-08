@@ -74,10 +74,12 @@ func DecodeTAF(raw string) TAF {
 		Raw:  cleanedRaw,
 	}
 
-	// Find index of first FM, BECMG, or TEMPO
+	// Find index of first FM, BECMG, TEMPO, or PROB
 	var changeIndex int
 	for i, part := range parts {
-		if part == "FM" || strings.HasPrefix(part, "FM") || part == "BECMG" || part == "TEMPO" {
+		if part == "FM" || strings.HasPrefix(part, "FM") ||
+			part == "BECMG" || part == "TEMPO" ||
+			strings.HasPrefix(part, "PROB") {
 			changeIndex = i
 			break
 		}
@@ -146,7 +148,8 @@ func DecodeTAF(raw string) TAF {
 			for i < len(parts) {
 				nextPart := parts[i]
 				if nextPart == "FM" || strings.HasPrefix(nextPart, "FM") ||
-					nextPart == "BECMG" || nextPart == "TEMPO" {
+					nextPart == "BECMG" || nextPart == "TEMPO" ||
+					strings.HasPrefix(nextPart, "PROB") {
 					break
 				}
 				parseForecastElement(&forecast, nextPart)
@@ -186,7 +189,71 @@ func DecodeTAF(raw string) TAF {
 			for i < len(parts) {
 				nextPart := parts[i]
 				if nextPart == "FM" || strings.HasPrefix(nextPart, "FM") ||
-					nextPart == "BECMG" || nextPart == "TEMPO" {
+					nextPart == "BECMG" || nextPart == "TEMPO" ||
+					strings.HasPrefix(nextPart, "PROB") {
+					break
+				}
+				parseForecastElement(&forecast, nextPart)
+				i++
+			}
+
+			t.Forecasts = append(t.Forecasts, forecast)
+			continue
+		}
+
+		// Handle PROB30 and PROB40 forecasts
+		if strings.HasPrefix(part, "PROB") {
+			probValue, err := strconv.Atoi(part[4:])
+			if err != nil {
+				// If we can't parse the probability value, skip this part
+				i++
+				continue
+			}
+
+			forecast := Forecast{
+				Type:        part,
+				Probability: probValue,
+				Raw:         part,
+			}
+
+			// Parse time period if available
+			i++
+			if i < len(parts) {
+				timeRegex := regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
+				if timeRegex.MatchString(parts[i]) {
+					matches := timeRegex.FindStringSubmatch(parts[i])
+					fromDay, _ := strconv.Atoi(matches[1])
+					fromHour, _ := strconv.Atoi(matches[2])
+					toDay, _ := strconv.Atoi(matches[3])
+					toHour, _ := strconv.Atoi(matches[4])
+
+					// Use current year and month
+					now := time.Now().UTC()
+					forecast.From = time.Date(now.Year(), now.Month(), fromDay, fromHour, 0, 0, 0, time.UTC)
+					forecast.To = time.Date(now.Year(), now.Month(), toDay, toHour, 0, 0, 0, time.UTC)
+					i++
+				}
+			}
+
+			// If no time period is given, use the current valid period
+			if forecast.From.IsZero() {
+				// Try to use the time from the most recent forecast
+				if len(t.Forecasts) > 0 {
+					lastForecast := t.Forecasts[len(t.Forecasts)-1]
+					forecast.From = lastForecast.From
+					forecast.To = lastForecast.To
+				} else {
+					forecast.From = t.ValidFrom
+					forecast.To = t.ValidTo
+				}
+			}
+
+			// Parse elements until next change indicator
+			for i < len(parts) {
+				nextPart := parts[i]
+				if nextPart == "FM" || strings.HasPrefix(nextPart, "FM") ||
+					nextPart == "BECMG" || nextPart == "TEMPO" ||
+					strings.HasPrefix(nextPart, "PROB") {
 					break
 				}
 				parseForecastElement(&forecast, nextPart)

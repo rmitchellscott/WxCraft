@@ -125,6 +125,16 @@ var weatherDescriptions = map[string]string{
 	"+FC":  "tornado/waterspout",
 }
 
+// TAF forecast types
+var forecastTypes = map[string]string{
+	"FM":     "from",
+	"BECMG":  "becoming",
+	"TEMPO":  "temporary",
+	"PROB30": "30% probability of",
+	"PROB40": "40% probability of",
+	"INTER":  "intermittent",
+}
+
 // Commonly used regular expressions
 var (
 	timeRegex     = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})Z$`)
@@ -135,6 +145,7 @@ var (
 	tempRegex     = regexp.MustCompile(`^(M?)(\d{2})/(M?)(\d{2})$`)
 	pressureRegex = regexp.MustCompile(`^A(\d{4})$`)
 	validRegex    = regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
+	probRegex     = regexp.MustCompile(`^PROB(\d{2})$`)
 )
 
 // WeatherData contains common fields for different weather reports
@@ -188,14 +199,15 @@ type METAR struct {
 
 // Forecast represents a single forecast period within a TAF
 type Forecast struct {
-	Type       string    // FM (from), TEMPO (temporary), BECMG (becoming), etc.
-	From       time.Time // Start time of this forecast period
-	To         time.Time // End time of this forecast period (if applicable)
-	Wind       Wind
-	Visibility string
-	Weather    []string
-	Clouds     []Cloud
-	Raw        string // Raw text for this forecast period
+	Type        string    // FM (from), TEMPO (temporary), BECMG (becoming), PROB30, PROB40, etc.
+	Probability int       // For PROB forecasts, the probability value (30, 40, etc.)
+	From        time.Time // Start time of this forecast period
+	To          time.Time // End time of this forecast period (if applicable)
+	Wind        Wind
+	Visibility  string
+	Weather     []string
+	Clouds      []Cloud
+	Raw         string // Raw text for this forecast period
 }
 
 // TAF represents a decoded Terminal Aerodrome Forecast
