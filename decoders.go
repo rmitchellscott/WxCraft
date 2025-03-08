@@ -275,7 +275,7 @@ func DecodeTAF(raw string) TAF {
 	return t
 }
 
-// / DecodeMETAR decodes a raw METAR string into a METAR struct with site information
+// DecodeMETAR decodes a raw METAR string into a METAR struct with site information
 func DecodeMETAR(raw string) METAR {
 	m := METAR{WeatherData: WeatherData{Raw: raw}}
 	parts := strings.Fields(raw)

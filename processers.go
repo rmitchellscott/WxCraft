@@ -15,6 +15,8 @@ func processRemarks(remarkParts []string) []Remark {
 	remarkCodes := map[string]string{
 		"AO1":    "automated station without precipitation sensor",
 		"AO2":    "automated station with precipitation sensor",
+		"AO1A":   "automated station without precipitation sensor",
+		"AO2A":   "automated station with precipitation sensor",
 		"SLP":    "sea level pressure",
 		"RMK":    "remarks indicator",
 		"PRESRR": "pressure rising rapidly",
@@ -48,6 +50,65 @@ func processRemarks(remarkParts []string) []Remark {
 				i += 3
 				continue
 			}
+		}
+
+		// Handle precipitation beginning/ending (e.g., SNB20, RAE15)
+		precipBERegex := regexp.MustCompile(`^(RA|SN|DZ|GR|GS|PE|IC|PL|SG|TS|FG|FU|VA|DU|SA|HZ|PY|BR|SHSN|SHRA|SHPE|SHPL|SHGR|SHGS)(B|E)(\d{2})$`)
+		if precipBERegex.MatchString(part) {
+			matches := precipBERegex.FindStringSubmatch(part)
+			phenType := matches[1]
+			beType := matches[2]
+			minute := matches[3]
+
+			// Map of weather phenomena for begin/end remarks
+			precipitationTypes := map[string]string{
+				"RA":   "rain",
+				"SN":   "snow",
+				"DZ":   "drizzle",
+				"GR":   "hail",
+				"GS":   "small hail",
+				"PE":   "ice pellets",
+				"IC":   "ice crystals",
+				"PL":   "ice pellets",
+				"SG":   "snow grains",
+				"TS":   "thunderstorm",
+				"FG":   "fog",
+				"FU":   "smoke",
+				"VA":   "volcanic ash",
+				"DU":   "dust",
+				"SA":   "sand",
+				"HZ":   "haze",
+				"PY":   "spray",
+				"BR":   "mist",
+				"SHSN": "snow shower",
+				"SHRA": "rain shower",
+				"SHPE": "ice pellet shower",
+				"SHPL": "ice pellet shower",
+				"SHGR": "hail shower",
+				"SHGS": "small hail shower",
+			}
+
+			// Get the phenomenon description
+			phenDesc, found := precipitationTypes[phenType]
+			if !found {
+				phenDesc = phenType
+			}
+
+			// Get action (began or ended)
+			action := "began"
+			if beType == "E" {
+				action = "ended"
+			}
+
+			// Parse the minute value
+			min, _ := strconv.Atoi(minute)
+
+			remarks = append(remarks, Remark{
+				Raw:         part,
+				Description: fmt.Sprintf("%s %s at %d minutes past the hour", phenDesc, action, min),
+			})
+			i++
+			continue
 		}
 
 		// Handle sea level pressure
