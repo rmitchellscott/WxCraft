@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,20 +10,34 @@ import (
 	"github.com/fatih/color"
 )
 
+// Command line flags
+var flagNoColor = flag.Bool("no-color", false, "Disable color output")
+
 // Color definitions using fatih/color
 var (
 	labelColor      = color.New(color.FgCyan)
 	valueColor      = color.New(color.FgWhite)
 	dateColor       = color.New(color.FgGreen)
-	sectionColor    = color.New(color.FgMagenta)
+	sectionColor    = color.New(color.FgMagenta) // Changed to magenta as requested
 	numberColor     = color.New(color.FgGreen)
 	remarkCodeColor = color.New(color.FgGreen)
 
 	// Age-based colors
 	freshColor   = color.New(color.FgGreen)
-	warningColor = color.New(color.FgYellow)
+	warningColor = color.New(color.FgYellow) // Using yellow for warnings as requested
 	expiredColor = color.New(color.FgRed)
 )
+
+// init function to parse flags and set up color handling
+func init() {
+	// Parse command line flags
+	flag.Parse()
+
+	// Handle no-color flag
+	if *flagNoColor {
+		color.NoColor = true // disables colorized output globally
+	}
+}
 
 // formatVisibility converts raw visibility string to human-readable format
 func formatVisibility(visibility string) string {
@@ -125,7 +140,7 @@ func formatWeather(weather []string) string {
 	return strings.Join(weatherStrs, ", ")
 }
 
-// getAgeColor returns the appropriate color based on METAR age
+// getMetarAgeColor returns the appropriate color based on METAR age
 func getMetarAgeColor(t time.Time) *color.Color {
 	minutes := int(time.Since(t).Minutes())
 	if minutes > 60 {
@@ -392,9 +407,4 @@ func formatNumberWithCommas(n int) string {
 	}
 
 	return result
-}
-
-// minutesSince calculates the number of minutes elapsed since the given time
-func minutesSince(t time.Time) int {
-	return int(time.Since(t).Minutes())
 }
