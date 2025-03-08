@@ -13,7 +13,7 @@ This tool is provided for educational and informational purposes only. It should
 
 ## Overview
 
-This Go application provides pilots, aviation enthusiasts, and weather watchers with human-readable interpretations of aviation weather data. It automatically fetches the latest METAR (Meteorological Aerodrome Report) and TAF (Terminal Aerodrome Forecast) for any airport with an ICAO code and presents the information in an easy-to-understand format.
+This Go application provides aviation enthusiasts and weather watchers with human-readable interpretations of aviation weather data. It automatically fetches the latest METAR (Meteorological Aerodrome Report) and TAF (Terminal Aerodrome Forecast) for any airport with an ICAO code and presents the information in an easy-to-understand format.
 
 ## Features
 
@@ -28,6 +28,7 @@ This Go application provides pilots, aviation enthusiasts, and weather watchers 
   - Temperature and dew point (in both Celsius and Fahrenheit)
   - Barometric pressure (in both inHg and millibars)
   - Detailed interpretation of remarks
+- Geolocates nearest airport by IP address
 
 ## Installation
 
@@ -88,22 +89,25 @@ wxcraft -no-decode KDEN
 Fetching METAR for KSFO...
 
 Raw METAR:
-KSFO 071756Z 28015G25KT 10SM FEW008 BKN200 16/10 A2999 RMK AO2 SLP156 T01560100
+KSFO 080556Z 29011KT 10SM CLR 10/08 A3022 RMK AO2 SLP232 T01000078 10144 20100 53013
 
 Decoded METAR:
-Station: KSFO
-Time: 2025-03-07 17:56 UTC (2 hours ago)
-Wind: From 280° at 15 knots, gusting to 25 knots
+Station: KSFO (San Francisco Intl, CA, US)
+Time: 2025-03-08 05:56 UTC (42 minutes ago)
+Wind: From 290° at 11 knots
 Visibility: 10 statute miles
-Clouds: Few clouds at 800 feet, Broken clouds at 20,000 feet
-Temperature: 16°C | 60°F
-Dew Point: 10°C | 50°F
-Pressure: 29.99 inHg | 1016.2 mbar
+Weather: Clear
+Temperature: 10°C | 50°F
+Dew Point: 8°C | 46°F
+Pressure: 30.22 inHg | 1023.4 mbar
 
 Remarks:
   AO2: Automated station with precipitation sensor
-  SLP156: Sea level pressure 1015.6 hPa
-  T01560100: Temperature 15.6°C, dew point 10.0°C
+  SLP232: Sea level pressure 1023.2 hPa
+  T01000078: Temperature 10.0°C, dew point 7.8°C
+  10144: 6-hour maximum temperature 14.4°C
+  20100: 6-hour minimum temperature 10.0°C
+  53013: Pressure tendency: increasing, then increasing more rapidly, 1.3 hPa change
 ```
 
 ## Command-Line Options
