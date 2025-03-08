@@ -337,15 +337,18 @@ func FormatTAF(t TAF) string {
 	for i, forecast := range t.Forecasts {
 		// Format the forecast type
 		var periodType string
-		switch forecast.Type {
-		case "BASE":
+		switch {
+		case forecast.Type == "BASE":
 			periodType = "Base Forecast"
-		case "FM":
+		case forecast.Type == "FM":
 			periodType = "From"
-		case "TEMPO":
+		case forecast.Type == "TEMPO":
 			periodType = "Temporary"
-		case "BECMG":
+		case forecast.Type == "BECMG":
 			periodType = "Becoming"
+		case strings.HasPrefix(forecast.Type, "PROB"):
+			// Handle PROB forecasts with the probability value
+			periodType = fmt.Sprintf("%d%% Probability", forecast.Probability)
 		default:
 			periodType = forecast.Type
 		}
