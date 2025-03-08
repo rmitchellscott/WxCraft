@@ -27,7 +27,6 @@ func isWeatherCode(s string) bool {
 	}
 	return false
 }
-
 func main() {
 	// Define command-line flags
 	metarOnly := flag.Bool("metar", false, "Show only METAR")
@@ -35,6 +34,8 @@ func main() {
 	noRawFlag := flag.Bool("no-raw", false, "Hide raw data")
 	noDecodeFlag := flag.Bool("no-decode", false, "Show only raw data without decoding")
 	flagNoColor := flag.Bool("no-color", false, "Disable color output")
+	radiusFlag := flag.Float64("radius", 50.0, "Search radius in miles when finding nearest airport (default 50)")
+	nearestFlag := flag.Bool("nearest", false, "Find nearest airport to your current location")
 	flag.Parse()
 
 	if *flagNoColor {
@@ -44,30 +45,71 @@ func main() {
 	// First check stdin for piped data
 	stationCode, rawInput, stdinHasData := readFromStdin()
 
-	// If no stdin data, get station code from args or prompt
+	// If no stdin data, get station code from various sources
 	if !stdinHasData {
 		var err error
 
-		// Try command line args first
-		remainingArgs := flag.Args()
-		if len(remainingArgs) > 0 {
-			stationCode, err = getStationCodeFromArgs(remainingArgs)
+		// Check if -nearest flag is used
+		if *nearestFlag {
+			stationCode, err = ProcessAutoCommand(*radiusFlag)
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 				return
 			}
 		} else {
-			// Prompt the user
-			stationCode, err = promptForStationCode()
-			if err != nil {
-				fmt.Printf("Error: %v\n", err)
-				return
+			// Try command line args first
+			remainingArgs := flag.Args()
+			if len(remainingArgs) > 0 {
+				input := strings.ToUpper(strings.TrimSpace(remainingArgs[0]))
+
+				// Check for special cases before calling the standard function
+				if input == "AUTO" {
+					stationCode, err = ProcessAutoCommand(*radiusFlag)
+					if err != nil {
+						fmt.Printf("Error: %v\n", err)
+						return
+					}
+				} else if zipRegex.MatchString(input) {
+					stationCode, err = ProcessZipcode(input, *radiusFlag)
+					if err != nil {
+						fmt.Printf("Error: %v\n", err)
+						return
+					}
+				} else {
+					// Use existing function for regular ICAO codes
+					stationCode, err = getStationCodeFromArgs(remainingArgs)
+					if err != nil {
+						fmt.Printf("Error: %v\n", err)
+						return
+					}
+				}
+			} else {
+				// Prompt the user
+				stationCode, err = promptForStationCode()
+				if err != nil {
+					fmt.Printf("Error: %v\n", err)
+					return
+				}
+
+				// Check for special cases after getting user input
+				if stationCode == "AUTO" {
+					stationCode, err = ProcessAutoCommand(*radiusFlag)
+					if err != nil {
+						fmt.Printf("Error: %v\n", err)
+						return
+					}
+				} else if zipRegex.MatchString(stationCode) {
+					stationCode, err = ProcessZipcode(stationCode, *radiusFlag)
+					if err != nil {
+						fmt.Printf("Error: %v\n", err)
+						return
+					}
+				}
 			}
 		}
 	}
 
-	// Pre-fetch site information if we're going to decode the data
-	// and both METAR and TAF are requested
+	// Rest of your code unchanged...
 	var siteInfo SiteInfo
 	var siteInfoFetched bool
 
