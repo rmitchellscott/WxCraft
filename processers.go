@@ -350,8 +350,8 @@ func processRemarks(remarkParts []string) []Remark {
 			if err == nil {
 				hours := map[byte]string{
 					'1': "1-hour",
-					'2': "3-hour",
-					'3': "6-hour",
+					'3': "3-hour",
+					'6': "6-hour",
 				}
 
 				timeframe := hours[hourDigit]
@@ -472,7 +472,7 @@ func processMETAR(stationCode string, rawInput string, stdinHasData bool, noRaw 
 
 	// Print the raw METAR if requested
 	if !noRaw {
-		fmt.Println("Raw METAR:")
+		functionColor.Println("----- Raw METAR -----")
 		fmt.Println(rawMetar)
 
 		// Add a line break if we're also showing decoded data
@@ -499,7 +499,7 @@ func processMETAR(stationCode string, rawInput string, stdinHasData bool, noRaw 
 		}
 
 		// Display the decoded METAR
-		fmt.Println("Decoded METAR:")
+		functionColor.Println("--- Decoded METAR ---")
 		fmt.Print(FormatMETAR(metar))
 	}
 }
@@ -515,7 +515,7 @@ func processTAF(stationCode string, noRaw bool, noDecode bool, siteInfo SiteInfo
 
 	// Print the raw TAF if requested
 	if !noRaw {
-		fmt.Println("Raw TAF:")
+		functionColor.Println("------ Raw TAF ------")
 		fmt.Println(rawTAF)
 
 		// Add a line break if we're also showing decoded data
@@ -542,7 +542,7 @@ func processTAF(stationCode string, noRaw bool, noDecode bool, siteInfo SiteInfo
 		}
 
 		// Display the decoded TAF
-		fmt.Println("Decoded TAF:")
+		functionColor.Println("---- Decoded TAF ----")
 		fmt.Print(FormatTAF(taf))
 	}
 }
