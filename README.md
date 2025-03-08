@@ -71,6 +71,9 @@ wxcraft -taf KBOS
 
 # Hide raw data
 wxcraft -no-raw EGLL
+
+# Show only raw data
+wxcraft -no-decode KDEN
 ```
 
 ### Example Output
@@ -102,6 +105,7 @@ Remarks:
 - `-metar`: Show only METAR data
 - `-taf`: Show only TAF data
 - `-no-raw`: Hide the raw METAR/TAF data
+- `-no-decode`: Show only raw METAR/TAF data
 
 ## Input Methods
 
