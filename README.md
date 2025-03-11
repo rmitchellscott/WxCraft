@@ -149,7 +149,7 @@ The application accepts input in several ways:
    - The application automatically detects whether the input is METAR or TAF
    - You can override auto-detection by using the `-metar` or `-taf` flags
    - Use the `-offline` flag to process data without making any API calls (useful for environments without internet access)
-   - In offline mode, station information is retrieved from an embedded database within the binary
+     - In offline mode, station information is retrieved from an embedded database within the binary
 
 ## Weather Phenomena Decoded
 

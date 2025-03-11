@@ -5,6 +5,13 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/fatih/color"
+)
+
+// Color variables for consistent formatting
+var (
+	errorColor = color.New(color.FgRed).Add(color.Bold)
 )
 
 // processRemarks processes the remarks section of a METAR
@@ -501,34 +508,27 @@ func processMETAR(stationCode string, rawInput string, stdinHasData bool, noRaw 
 }
 
 // processTAF fetches, decodes and displays TAF data with site information
-func processTAF(stationCode string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool, offlineMode bool) {
-	// If in offline mode, we can't fetch TAF data
-	if offlineMode {
+// This follows the same pattern as processMETAR to handle both stdin and network calls
+func processTAF(stationCode string, rawInput string, stdinHasData bool, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool, offlineMode bool) {
+	var rawTAF string
+	var err error
+
+	// Get the raw TAF data
+	if stdinHasData {
+		rawTAF = rawInput
+	} else if !offlineMode {
+		// Only fetch from API if not in offline mode
+		rawTAF, err = FetchTAF(stationCode)
+		if err != nil {
+			errorColor.Printf("Error fetching TAF: %v\n", err)
+			return
+		}
+	} else {
+		// In offline mode without stdin data, we can't proceed
 		errorColor.Println("Error: Cannot fetch TAF in offline mode without piped input.")
 		return
 	}
 
-	// Fetch raw TAF
-	rawTAF, err := FetchTAF(stationCode)
-	if err != nil {
-		errorColor.Printf("Error fetching TAF: %v\n", err)
-		return
-	}
-
-	// Process the TAF data
-	processTAFData(stationCode, rawTAF, noRaw, noDecode, siteInfo, siteInfoFetched)
-}
-
-// processTAFFromStdin processes TAF data from stdin
-
-func processTAFFromStdin(stationCode string, rawTAF string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool, offlineMode bool) {
-
-	// Process the TAF data
-	processTAFData(stationCode, rawTAF, noRaw, noDecode, siteInfo, siteInfoFetched)
-}
-
-// processTAFData processes and displays TAF data with site information
-func processTAFData(stationCode string, rawTAF string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool) {
 	// Print the raw TAF if requested
 	if !noRaw {
 		functionColor.Println("------ Raw TAF ------")

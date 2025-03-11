@@ -8,11 +8,6 @@ import (
 	"github.com/fatih/color"
 )
 
-// Color variables for consistent formatting
-var (
-	errorColor = color.New(color.FgRed).Add(color.Bold)
-)
-
 // isWeatherCode checks if a string contains any weather codes
 func isWeatherCode(s string) bool {
 	// Don't match cloud patterns as weather
@@ -51,25 +46,15 @@ func main() {
 	// First check stdin for piped data
 	stationCode, rawInput, stdinHasData, isStdinTAF := readFromStdin()
 
-	// Check if offline mode is requested but there's no stdin data
-	if *offlineFlag && !stdinHasData {
-		errorColor.Println("Error: Offline mode can only be used with piped input data.")
-		return
-	}
-
 	// If no stdin data, get station code from various sources
 	if !stdinHasData {
 		var err error
 
 		// Check if -nearest flag is used
 		if *nearestFlag {
-			if *offlineFlag {
-				errorColor.Println("Error: Cannot use -nearest flag in offline mode.")
-				return
-			}
 			stationCode, err = ProcessAutoCommand(*radiusFlag)
 			if err != nil {
-				errorColor.Printf("Error: %v\n", err)
+				fmt.Printf("Error: %v\n", err)
 				return
 			}
 		} else {
@@ -80,30 +65,22 @@ func main() {
 
 				// Check for special cases before calling the standard function
 				if input == "AUTO" {
-					if *offlineFlag {
-						errorColor.Println("Error: Cannot use AUTO command in offline mode.")
-						return
-					}
 					stationCode, err = ProcessAutoCommand(*radiusFlag)
 					if err != nil {
-						errorColor.Printf("Error: %v\n", err)
+						fmt.Printf("Error: %v\n", err)
 						return
 					}
 				} else if zipRegex.MatchString(input) {
-					if *offlineFlag {
-						errorColor.Println("Error: Cannot use zipcode in offline mode.")
-						return
-					}
 					stationCode, err = ProcessZipcode(input, *radiusFlag)
 					if err != nil {
-						errorColor.Printf("Error: %v\n", err)
+						fmt.Printf("Error: %v\n", err)
 						return
 					}
 				} else {
 					// Use existing function for regular ICAO codes
 					stationCode, err = getStationCodeFromArgs(remainingArgs)
 					if err != nil {
-						errorColor.Printf("Error: %v\n", err)
+						fmt.Printf("Error: %v\n", err)
 						return
 					}
 				}
@@ -111,29 +88,21 @@ func main() {
 				// Prompt the user
 				stationCode, err = promptForStationCode()
 				if err != nil {
-					errorColor.Printf("Error: %v\n", err)
+					fmt.Printf("Error: %v\n", err)
 					return
 				}
 
 				// Check for special cases after getting user input
 				if stationCode == "AUTO" {
-					if *offlineFlag {
-						errorColor.Println("Error: Cannot use AUTO command in offline mode.")
-						return
-					}
 					stationCode, err = ProcessAutoCommand(*radiusFlag)
 					if err != nil {
-						errorColor.Printf("Error: %v\n", err)
+						fmt.Printf("Error: %v\n", err)
 						return
 					}
 				} else if zipRegex.MatchString(stationCode) {
-					if *offlineFlag {
-						errorColor.Println("Error: Cannot use zipcode in offline mode.")
-						return
-					}
 					stationCode, err = ProcessZipcode(stationCode, *radiusFlag)
 					if err != nil {
-						errorColor.Printf("Error: %v\n", err)
+						fmt.Printf("Error: %v\n", err)
 						return
 					}
 				}
@@ -145,10 +114,10 @@ func main() {
 	var siteInfo SiteInfo
 	var siteInfoFetched bool
 
-	if !*noDecodeFlag && !*offlineFlag {
+	if !*noDecodeFlag {
 		fetchedSiteInfo, err := FetchSiteInfo(stationCode)
 		if err != nil {
-			errorColor.Printf("Warning: Could not fetch site info for %s: %v\n", stationCode, err)
+			fmt.Printf("Warning: Could not fetch site info for %s: %v\n", stationCode, err)
 		} else {
 			siteInfo = fetchedSiteInfo
 			siteInfoFetched = true
@@ -163,7 +132,7 @@ func main() {
 			if !siteInfoFetched {
 				offlineSiteInfo, err := LoadEmbeddedStationInfo(stationCode)
 				if err != nil {
-					errorColor.Printf("Warning: Could not load offline site info for %s: %v\n", stationCode, err)
+					fmt.Printf("Warning: Could not load offline site info for %s: %v\n", stationCode, err)
 				} else {
 					siteInfo = offlineSiteInfo
 					siteInfoFetched = true
@@ -174,7 +143,7 @@ func main() {
 		// Process data according to flags, overriding auto-detection if flags are specified
 		if *tafOnly || (isStdinTAF && !*metarOnly) {
 			// Process as TAF (either forced with -taf flag or detected as TAF and not forced to METAR)
-			processTAFFromStdin(stationCode, rawInput, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
+			processTAF(stationCode, rawInput, true, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
 		} else if *metarOnly || !isStdinTAF {
 			// Process as METAR (either forced with -metar flag or detected as METAR)
 			processMETAR(stationCode, rawInput, true, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
@@ -195,7 +164,7 @@ func main() {
 			}
 
 			// Fetch and process TAF from the web
-			processTAF(stationCode, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
+			processTAF(stationCode, "", false, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
 		}
 	}
 }
