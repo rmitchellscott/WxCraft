@@ -43,7 +43,7 @@ func main() {
 	}
 
 	// First check stdin for piped data
-	stationCode, rawInput, stdinHasData := readFromStdin()
+	stationCode, rawInput, stdinHasData, isStdinTAF := readFromStdin()
 
 	// If no stdin data, get station code from various sources
 	if !stdinHasData {
@@ -123,18 +123,33 @@ func main() {
 		}
 	}
 
-	// Fetch and display METAR if requested or by default
-	if !*tafOnly {
-		processMETAR(stationCode, rawInput, stdinHasData, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched)
-	}
-
-	// Fetch and display TAF if requested or by default
-	if !*metarOnly && !stdinHasData {
-		// Add a line break if we also displayed METAR
+	// Handle stdin data based on flags and auto-detection
+	if stdinHasData {
+		// Process data according to flags, overriding auto-detection if flags are specified
+		if *tafOnly || (isStdinTAF && !*metarOnly) {
+			// Process as TAF (either forced with -taf flag or detected as TAF and not forced to METAR)
+			processTAFFromStdin(stationCode, rawInput, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched)
+		} else if *metarOnly || !isStdinTAF {
+			// Process as METAR (either forced with -metar flag or detected as METAR)
+			processMETAR(stationCode, rawInput, true, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched)
+		}
+	} else {
+		// No stdin data, fetch from web based on flags
+		
+		// Fetch and display METAR if requested or by default
 		if !*tafOnly {
-			fmt.Println("\n----------------------------------\n")
+			processMETAR(stationCode, "", false, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched)
 		}
 
-		processTAF(stationCode, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched)
+		// Fetch and display TAF if requested or by default
+		if !*metarOnly {
+			// Add a line break if we also displayed METAR
+			if !*tafOnly {
+				fmt.Println("\n----------------------------------\n")
+			}
+
+			// Fetch and process TAF from the web
+			processTAF(stationCode, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched)
+		}
 	}
 }

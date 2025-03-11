@@ -9,28 +9,58 @@ import (
 )
 
 // readFromStdin reads data from stdin if available
-func readFromStdin() (string, string, bool) {
+func readFromStdin() (string, string, bool, bool) {
 	// Check if input is being piped in (stdin)
 	info, err := os.Stdin.Stat()
 	stdinHasData := (err == nil && info.Mode()&os.ModeCharDevice == 0)
 
 	if !stdinHasData {
-		return "", "", false
+		return "", "", false, false
 	}
 
 	// Read from stdin if data is piped in
 	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		rawInput := scanner.Text()
-
-		// Try to extract station code from the raw input
-		parts := strings.Fields(rawInput)
-		if len(parts) > 0 {
-			return parts[0], rawInput, true
+	
+	// First, read the complete input which might span multiple lines
+	var inputBuilder strings.Builder
+	for scanner.Scan() {
+		line := scanner.Text()
+		inputBuilder.WriteString(line)
+		inputBuilder.WriteString("\n") // Preserve line breaks
+	}
+	
+	rawInput := strings.TrimSpace(inputBuilder.String())
+	
+	// If we couldn't read any data, return
+	if rawInput == "" {
+		return "", "", false, false
+	}
+	
+	// Try to extract station code from the first line of raw input
+	lines := strings.Split(rawInput, "\n")
+	firstLine := lines[0]
+	parts := strings.Fields(firstLine)
+	
+	if len(parts) > 0 {
+		// Determine if input is a TAF or METAR
+		// Look for TAF-specific keywords and patterns
+		isTAF := strings.HasPrefix(strings.TrimSpace(firstLine), "TAF") || 
+			strings.Contains(rawInput, "TEMPO") || 
+			strings.Contains(rawInput, "BECMG") || 
+			strings.Contains(rawInput, "PROB") || 
+			// The following regex matches a typical TAF valid period format (e.g., 1106/1212)
+			regexp.MustCompile(`\d{4}/\d{4}`).MatchString(rawInput)
+		
+		// If the first token is "TAF", use the second token as the station code
+		stationCode := parts[0]
+		if stationCode == "TAF" && len(parts) > 1 {
+			stationCode = parts[1]
 		}
+		
+		return stationCode, rawInput, true, isTAF
 	}
 
-	return "", "", false
+	return "", "", false, false
 }
 
 // getStationCodeFromArgs gets station code from command-line args

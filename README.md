@@ -81,6 +81,18 @@ wxcraft -no-raw EGLL
 
 # Show only raw data
 wxcraft -no-decode KDEN
+
+# Process raw METAR from stdin
+echo "KBOS 110054Z 12015G27KT 3SM -RA BR OVC007 08/07 A2978" | wxcraft
+
+# Process raw TAF from stdin
+echo "TAF KBOS 110547Z 1106/1212 14012KT 4SM -RA BR OVC008" | wxcraft
+
+# Force METAR interpretation regardless of auto-detection
+echo "TAF KBOS 110547Z 1106/1212 14012KT 4SM -RA BR OVC008" | wxcraft -metar
+
+# Force TAF interpretation regardless of auto-detection
+echo "KBOS 110054Z 12015G27KT 3SM -RA BR OVC007 08/07 A2978" | wxcraft -taf
 ```
 
 ### Example Output
@@ -126,7 +138,9 @@ The application accepts input in several ways:
 
 1. **Command-line argument**: Pass the ICAO code as a command-line argument
 2. **Interactive prompt**: If no argument is provided, you'll be prompted to enter an ICAO code
-3. **Piped input**: You can pipe raw METAR data directly into the application
+3. **Piped input**: You can pipe raw METAR or TAF data directly into the application
+   - The application automatically detects whether the input is METAR or TAF
+   - You can override auto-detection by using the `-metar` or `-taf` flags
 
 ## Weather Phenomena Decoded
 
