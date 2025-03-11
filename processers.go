@@ -455,19 +455,24 @@ func processRemarks(remarkParts []string) []Remark {
 }
 
 // processMETAR fetches, decodes and displays METAR data with site information
-func processMETAR(stationCode string, rawInput string, stdinHasData bool, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool) {
+func processMETAR(stationCode string, rawInput string, stdinHasData bool, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool, offlineMode bool) {
 	var rawMetar string
 	var err error
 
 	// Get the raw METAR data
 	if stdinHasData {
 		rawMetar = rawInput
-	} else {
+	} else if !offlineMode {
+		// Only fetch from API if not in offline mode
 		rawMetar, err = FetchMETAR(stationCode)
 		if err != nil {
 			fmt.Printf("Error fetching METAR: %v\n", err)
 			return
 		}
+	} else {
+		// In offline mode without stdin data, we can't proceed
+		fmt.Printf("Error: Cannot fetch METAR in offline mode without piped input.")
+		return
 	}
 
 	// Print the raw METAR if requested
@@ -486,17 +491,8 @@ func processMETAR(stationCode string, rawInput string, stdinHasData bool, noRaw 
 		// Decode the METAR
 		metar := DecodeMETAR(rawMetar)
 
-		// Add site information if we have it, otherwise fetch it
-		if siteInfoFetched {
-			metar.SiteInfo = siteInfo
-		} else {
-			fetchedSiteInfo, err := FetchSiteInfo(stationCode)
-			if err != nil {
-				fmt.Printf("Warning: Could not fetch site info for %s: %v\n", stationCode, err)
-			} else {
-				metar.SiteInfo = fetchedSiteInfo
-			}
-		}
+		// Add site information
+		metar.SiteInfo = siteInfo
 
 		// Display the decoded METAR
 		functionColor.Println("--- Decoded METAR ---")
@@ -505,7 +501,13 @@ func processMETAR(stationCode string, rawInput string, stdinHasData bool, noRaw 
 }
 
 // processTAF fetches, decodes and displays TAF data with site information
-func processTAF(stationCode string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool) {
+func processTAF(stationCode string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool, offlineMode bool) {
+	// If in offline mode, we can't fetch TAF data
+	if offlineMode {
+		fmt.Printf("Error: Cannot fetch TAF in offline mode without piped input.")
+		return
+	}
+
 	// Fetch raw TAF
 	rawTAF, err := FetchTAF(stationCode)
 	if err != nil {
@@ -518,7 +520,7 @@ func processTAF(stationCode string, noRaw bool, noDecode bool, siteInfo SiteInfo
 }
 
 // processTAFFromStdin processes TAF data from stdin
-func processTAFFromStdin(stationCode string, rawTAF string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool) {
+func processTAFFromStdin(stationCode string, rawTAF string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool, offlineMode bool) {
 	// Process the TAF data
 	processTAFData(stationCode, rawTAF, noRaw, noDecode, siteInfo, siteInfoFetched)
 }
@@ -541,17 +543,8 @@ func processTAFData(stationCode string, rawTAF string, noRaw bool, noDecode bool
 		// Decode the TAF
 		taf := DecodeTAF(rawTAF)
 
-		// Add site information if we have it, otherwise fetch it
-		if siteInfoFetched {
-			taf.SiteInfo = siteInfo
-		} else {
-			fetchedSiteInfo, err := FetchSiteInfo(stationCode)
-			if err != nil {
-				fmt.Printf("Warning: Could not fetch site info for %s: %v\n", stationCode, err)
-			} else {
-				taf.SiteInfo = fetchedSiteInfo
-			}
-		}
+		// Add site information
+		taf.SiteInfo = siteInfo
 
 		// Display the decoded TAF
 		functionColor.Println("---- Decoded TAF ----")
