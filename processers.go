@@ -520,7 +520,9 @@ func processTAF(stationCode string, noRaw bool, noDecode bool, siteInfo SiteInfo
 }
 
 // processTAFFromStdin processes TAF data from stdin
+
 func processTAFFromStdin(stationCode string, rawTAF string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool, offlineMode bool) {
+
 	// Process the TAF data
 	processTAFData(stationCode, rawTAF, noRaw, noDecode, siteInfo, siteInfoFetched)
 }
