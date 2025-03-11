@@ -513,6 +513,18 @@ func processTAF(stationCode string, noRaw bool, noDecode bool, siteInfo SiteInfo
 		return
 	}
 
+	// Process the TAF data
+	processTAFData(stationCode, rawTAF, noRaw, noDecode, siteInfo, siteInfoFetched)
+}
+
+// processTAFFromStdin processes TAF data from stdin
+func processTAFFromStdin(stationCode string, rawTAF string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool) {
+	// Process the TAF data
+	processTAFData(stationCode, rawTAF, noRaw, noDecode, siteInfo, siteInfoFetched)
+}
+
+// processTAFData processes and displays TAF data with site information
+func processTAFData(stationCode string, rawTAF string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool) {
 	// Print the raw TAF if requested
 	if !noRaw {
 		functionColor.Println("------ Raw TAF ------")
