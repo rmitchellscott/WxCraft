@@ -466,12 +466,12 @@ func processMETAR(stationCode string, rawInput string, stdinHasData bool, noRaw 
 		// Only fetch from API if not in offline mode
 		rawMetar, err = FetchMETAR(stationCode)
 		if err != nil {
-			fmt.Printf("Error fetching METAR: %v\n", err)
+			errorColor.Printf("Error fetching METAR: %v\n", err)
 			return
 		}
 	} else {
 		// In offline mode without stdin data, we can't proceed
-		fmt.Printf("Error: Cannot fetch METAR in offline mode without piped input.")
+		errorColor.Println("Error: Cannot fetch METAR in offline mode without piped input.")
 		return
 	}
 
@@ -504,14 +504,14 @@ func processMETAR(stationCode string, rawInput string, stdinHasData bool, noRaw 
 func processTAF(stationCode string, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool, offlineMode bool) {
 	// If in offline mode, we can't fetch TAF data
 	if offlineMode {
-		fmt.Printf("Error: Cannot fetch TAF in offline mode without piped input.")
+		errorColor.Println("Error: Cannot fetch TAF in offline mode without piped input.")
 		return
 	}
 
 	// Fetch raw TAF
 	rawTAF, err := FetchTAF(stationCode)
 	if err != nil {
-		fmt.Printf("Error fetching TAF: %v\n", err)
+		errorColor.Printf("Error fetching TAF: %v\n", err)
 		return
 	}
 
