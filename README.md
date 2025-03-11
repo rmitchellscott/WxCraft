@@ -151,7 +151,6 @@ The application accepts input in several ways:
    - Use the `-offline` flag to process data without making any API calls (useful for environments without internet access)
    - In offline mode, station information is retrieved from an embedded database within the binary
 
-
 ## Weather Phenomena Decoded
 
 The application decodes a comprehensive range of weather phenomena, including:

@@ -20,7 +20,7 @@ func readFromStdin() (string, string, bool, bool) {
 
 	// Read from stdin if data is piped in
 	scanner := bufio.NewScanner(os.Stdin)
-  
+
 	// First, read the complete input which might span multiple lines
 	var inputBuilder strings.Builder
 	for scanner.Scan() {
@@ -29,7 +29,7 @@ func readFromStdin() (string, string, bool, bool) {
 		inputBuilder.WriteString("\n") // Preserve line breaks
 	}
 
-  rawInput := strings.TrimSpace(inputBuilder.String())
+	rawInput := strings.TrimSpace(inputBuilder.String())
 
 	// If we couldn't read any data, return
 	if rawInput == "" {
@@ -41,7 +41,7 @@ func readFromStdin() (string, string, bool, bool) {
 	firstLine := lines[0]
 	parts := strings.Fields(firstLine)
 
-  	if len(parts) > 0 {
+	if len(parts) > 0 {
 		// Determine if input is a TAF or METAR
 		// Look for TAF-specific keywords and patterns
 		isTAF := strings.HasPrefix(strings.TrimSpace(firstLine), "TAF") ||
@@ -50,6 +50,7 @@ func readFromStdin() (string, string, bool, bool) {
 			strings.Contains(rawInput, "PROB") ||
 			// The following regex matches a typical TAF valid period format (e.g., 1106/1212)
 			regexp.MustCompile(`\d{4}/\d{4}`).MatchString(rawInput)
+
 		// If the first token is "TAF", use the second token as the station code
 		stationCode := parts[0]
 		if stationCode == "TAF" && len(parts) > 1 {
