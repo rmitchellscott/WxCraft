@@ -143,7 +143,7 @@ func main() {
 		// Process data according to flags, overriding auto-detection if flags are specified
 		if *tafOnly || (isStdinTAF && !*metarOnly) {
 			// Process as TAF (either forced with -taf flag or detected as TAF and not forced to METAR)
-			processTAFFromStdin(stationCode, rawInput, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
+			processTAF(stationCode, rawInput, true, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
 		} else if *metarOnly || !isStdinTAF {
 			// Process as METAR (either forced with -metar flag or detected as METAR)
 			processMETAR(stationCode, rawInput, true, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
@@ -164,7 +164,7 @@ func main() {
 			}
 
 			// Fetch and process TAF from the web
-			processTAF(stationCode, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
+			processTAF(stationCode, "", false, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
 		}
 	}
 }
