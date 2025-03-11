@@ -93,6 +93,12 @@ echo "TAF KBOS 110547Z 1106/1212 14012KT 4SM -RA BR OVC008" | wxcraft -metar
 
 # Force TAF interpretation regardless of auto-detection
 echo "KBOS 110054Z 12015G27KT 3SM -RA BR OVC007 08/07 A2978" | wxcraft -taf
+
+# Process data in offline mode (no API calls)
+echo "KJFK 110154Z 09007KT 10SM FEW040 BKN250 12/01 A3013 RMK AO2" | wxcraft -offline
+
+# Force TAF interpretation in offline mode
+echo "KBOS 110054Z 12015G27KT 3SM -RA BR OVC007 08/07 A2978" | wxcraft -offline -taf
 ```
 
 ### Example Output
@@ -131,6 +137,7 @@ Remarks:
 - `-no-raw`: Hide the raw METAR/TAF data
 - `-no-decode`: Show only raw METAR/TAF data
 - `-no-color`: Disable color in the output
+- `-offline`: Operate in offline mode (only works with stdin data)
 
 ## Input Methods
 
@@ -141,6 +148,9 @@ The application accepts input in several ways:
 3. **Piped input**: You can pipe raw METAR or TAF data directly into the application
    - The application automatically detects whether the input is METAR or TAF
    - You can override auto-detection by using the `-metar` or `-taf` flags
+   - Use the `-offline` flag to process data without making any API calls (useful for environments without internet access)
+   - In offline mode, station information is retrieved from an embedded database within the binary
+
 
 ## Weather Phenomena Decoded
 

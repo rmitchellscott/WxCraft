@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -30,16 +29,11 @@ func DecodeTAF(raw string) TAF {
 	} else {
 		t.Station = parts[0]
 	}
-	siteInfo, err := FetchSiteInfo(t.Station)
-	if err != nil {
-		fmt.Printf("Warning: Could not fetch site info for %s: %v\n", t.Station, err)
-		t.SiteInfo = SiteInfo{
-			Name:    t.Station,
-			State:   "",
-			Country: "",
-		}
-	} else {
-		t.SiteInfo = siteInfo
+	// Initialize default site info
+	t.SiteInfo = SiteInfo{
+		Name:    t.Station,
+		State:   "",
+		Country: "",
 	}
 
 	// Parse issuance time
@@ -287,18 +281,11 @@ func DecodeMETAR(raw string) METAR {
 	// Station code
 	m.Station = parts[0]
 
-	// Fetch site information
-	siteInfo, err := FetchSiteInfo(m.Station)
-	if err != nil {
-		// Use default site info but continue
-		fmt.Printf("Warning: Could not fetch site info for %s: %v\n", m.Station, err)
-		m.SiteInfo = SiteInfo{
-			Name:    m.Station,
-			State:   "",
-			Country: "",
-		}
-	} else {
-		m.SiteInfo = siteInfo
+	// Initialize default site info
+	m.SiteInfo = SiteInfo{
+		Name:    m.Station,
+		State:   "",
+		Country: "",
 	}
 
 	// Time
