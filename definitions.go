@@ -194,6 +194,7 @@ type METAR struct {
 	Temperature int
 	DewPoint    int
 	Pressure    float64
+	PressureUnit string // "hPa" or "inHg"
 	Remarks     []Remark
 }
 
