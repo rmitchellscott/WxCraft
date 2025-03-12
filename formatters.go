@@ -327,8 +327,78 @@ func FormatMETAR(m METAR) string {
 		}
 	}
 
-	// Runway Visual Range (RVR)
-	if len(m.RVR) > 0 {
+	// Runway Conditions and Visual Range
+	if len(m.RunwayConditions) > 0 {
+		sb.WriteString("\n")
+		sectionColor.Fprintln(&sb, "Runway Conditions:")
+		for _, cond := range m.RunwayConditions {
+			// Format the runway number
+			sb.WriteString("  Runway " + cond.Runway + ": ")
+
+			// Handle cleared runways
+			if cond.Cleared {
+				sb.WriteString(fmt.Sprintf("Cleared of deposits %d minutes ago", cond.ClearedTime))
+				sb.WriteString("\n")
+				continue
+			}
+
+			// Handle variable visibility
+			if cond.VisMax > 0 {
+				// Variables for readability
+				minPrefix := ""
+				if cond.Prefix == "M" {
+					minPrefix = "less than "
+				} else if cond.Prefix == "P" {
+					minPrefix = "more than "
+				}
+
+				// Handle max value prefix (if any)
+				maxPrefix := ""
+
+				// Format unit
+				unit := "meters"
+				if cond.Unit == "FT" {
+					unit = "feet"
+				}
+
+				sb.WriteString(fmt.Sprintf("Visibility between %s%d and %s%d %s",
+					minPrefix, cond.VisMin, maxPrefix, cond.VisMax, unit))
+			} else {
+				// Non-variable visibility
+				prefix := ""
+				if cond.Prefix == "M" {
+					prefix = "Less than "
+				} else if cond.Prefix == "P" {
+					prefix = "More than "
+				}
+
+				unit := "meters"
+				if cond.Unit == "FT" {
+					unit = "feet"
+				}
+
+				sb.WriteString(fmt.Sprintf("%s%d %s", prefix, cond.Visibility, unit))
+			}
+
+			// Add trend if available
+			if cond.Trend != "" {
+				trendMap := map[string]string{
+					"D": " (decreasing)",
+					"U": " (increasing)",
+					"N": " (no change)",
+				}
+				if desc, ok := trendMap[cond.Trend]; ok {
+					sb.WriteString(desc)
+				} else {
+					// Fallback for unrecognized trend
+					sb.WriteString(fmt.Sprintf(" (trend: %s)", cond.Trend))
+				}
+			}
+
+			sb.WriteString("\n")
+		}
+	} else if len(m.RVR) > 0 {
+		// Legacy RVR display (only used if no RunwayConditions are available)
 		sb.WriteString("\n")
 		sectionColor.Fprintln(&sb, "Runway Visual Range:")
 		for _, rvr := range m.RVR {

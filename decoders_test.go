@@ -421,25 +421,6 @@ func TestDecodeMETAR_temperature(t *testing.T) {
 	}
 }
 
-// func TestDecodeMETAR_temperatureOnlyFormat(t *testing.T) {
-// 	// Test case with temperature only format where dew point is missing
-// 	metarString := "K2D5 081355Z AUTO 27011KT M01/ A2990 RMK AO2"
-// 	metar := DecodeMETAR(metarString)
-
-// 	// Check station code
-// 	assert.Equal(t, "K2D5", metar.Station, "Station code should be K2D5")
-
-// 	// Check temperature - should be -1°C
-// 	assert.Equal(t, -1, metar.Temperature, "Temperature should be -1")
-
-// 	// Check dew point - should be nil for missing value
-// 	assert.Nil(t, metar.DewPoint, "Dew point should be nil (missing)")
-
-// 	// Check pressure
-// 	assert.Equal(t, 29.90, metar.Pressure, "Pressure should be 29.90 inHg")
-// 	assert.Equal(t, "inHg", metar.PressureUnit, "Pressure unit should be inHg")
-// }
-
 func TestDecodeMETAR_pressure(t *testing.T) {
 	t.Parallel()
 	var failures []string
@@ -628,7 +609,9 @@ func TestDecodeMETAR_unhandledValues(t *testing.T) {
 				(len(part) > 1 && part[0] == 'Q') || // Q-format pressure
 				pressureRegex.MatchString(part) || // A-format pressure
 				cavokRegex.MatchString(part) || // CAVOK
-				rvrRegex.MatchString(part) { // Runway Visual Range
+				rvrRegex.MatchString(part) || // Basic Runway Visual Range
+				runwayCondRegex.MatchString(part) || // Enhanced runway condition
+				runwayClearedRegex.MatchString(part) { // Cleared runway condition
 				continue
 			}
 
@@ -679,5 +662,121 @@ func TestDecodeMETAR_unhandledValues(t *testing.T) {
 		// Report to the test output
 		t.Errorf("Found %d unhandled values in METAR pre-remark section. See '%s' for details.",
 			len(allUnhandledValues), logFile)
+	}
+}
+func TestDecodeMETAR_runwayConditions(t *testing.T) {
+	t.Parallel()
+	var failures []string
+
+	for line, metar := range decodeMETARList(t) {
+		fields := strings.Fields(line)
+		var expectedRunwayConditions []RunwayCondition
+
+		// Find sections to know where to stop
+		rmkIndex := -1
+		sectionIndices := []int{}
+
+		// Find all TEMPO, BECMG, and RMK sections
+		for i, part := range fields {
+			if part == "RMK" {
+				rmkIndex = i
+				break // RMK always ends the main section
+			}
+			if part == "TEMPO" || part == "BECMG" {
+				sectionIndices = append(sectionIndices, i)
+			}
+		}
+
+		// Find the first section marker
+		endIndex := len(fields)
+		if rmkIndex != -1 {
+			endIndex = rmkIndex
+		}
+
+		// Find the earliest TEMPO or BECMG section
+		for _, idx := range sectionIndices {
+			if idx < endIndex {
+				endIndex = idx
+			}
+		}
+
+		// Collect runway condition data from original METAR
+		for i := 2; i < endIndex; i++ {
+			if runwayCondRegex.MatchString(fields[i]) || runwayClearedRegex.MatchString(fields[i]) {
+				expectedRunwayConditions = append(expectedRunwayConditions, parseRunwayCondition(fields[i]))
+			}
+		}
+
+		// Check number of runway conditions
+		if len(expectedRunwayConditions) != len(metar.RunwayConditions) {
+			failures = append(failures, fmt.Sprintf("Raw METAR: %s\nWrong number of runway conditions - Expected: %d, Got: %d\nExpected: %+v\nActual: %+v\n\n",
+				line, len(expectedRunwayConditions), len(metar.RunwayConditions), expectedRunwayConditions, metar.RunwayConditions))
+			continue
+		}
+
+		// Check each runway condition
+		for i := range expectedRunwayConditions {
+			if i < len(metar.RunwayConditions) {
+				expected := expectedRunwayConditions[i]
+				actual := metar.RunwayConditions[i]
+
+				// Compare each field individually for better error reporting
+				if expected.Runway != actual.Runway ||
+					expected.Visibility != actual.Visibility ||
+					expected.VisMin != actual.VisMin ||
+					expected.VisMax != actual.VisMax ||
+					expected.Trend != actual.Trend ||
+					expected.Unit != actual.Unit ||
+					expected.Prefix != actual.Prefix ||
+					expected.Cleared != actual.Cleared ||
+					expected.ClearedTime != actual.ClearedTime {
+
+					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nRunway condition %d mismatch\nExpected: %+v\nActual: %+v\n\n",
+						line, i, expected, actual))
+
+					// Add detailed field differences for better debugging
+					if expected.Runway != actual.Runway {
+						failures = append(failures, fmt.Sprintf("  - Runway mismatch: expected '%s', got '%s'\n", expected.Runway, actual.Runway))
+					}
+					if expected.Visibility != actual.Visibility {
+						failures = append(failures, fmt.Sprintf("  - Visibility mismatch: expected %d, got %d\n", expected.Visibility, actual.Visibility))
+					}
+					if expected.VisMin != actual.VisMin {
+						failures = append(failures, fmt.Sprintf("  - VisMin mismatch: expected %d, got %d\n", expected.VisMin, actual.VisMin))
+					}
+					if expected.VisMax != actual.VisMax {
+						failures = append(failures, fmt.Sprintf("  - VisMax mismatch: expected %d, got %d\n", expected.VisMax, actual.VisMax))
+					}
+					if expected.Trend != actual.Trend {
+						failures = append(failures, fmt.Sprintf("  - Trend mismatch: expected '%s', got '%s'\n", expected.Trend, actual.Trend))
+					}
+					if expected.Unit != actual.Unit {
+						failures = append(failures, fmt.Sprintf("  - Unit mismatch: expected '%s', got '%s'\n", expected.Unit, actual.Unit))
+					}
+					if expected.Prefix != actual.Prefix {
+						failures = append(failures, fmt.Sprintf("  - Prefix mismatch: expected '%s', got '%s'\n", expected.Prefix, actual.Prefix))
+					}
+					if expected.Cleared != actual.Cleared {
+						failures = append(failures, fmt.Sprintf("  - Cleared mismatch: expected %v, got %v\n", expected.Cleared, actual.Cleared))
+					}
+					if expected.ClearedTime != actual.ClearedTime {
+						failures = append(failures, fmt.Sprintf("  - ClearedTime mismatch: expected %d, got %d\n", expected.ClearedTime, actual.ClearedTime))
+					}
+				}
+			}
+		}
+	}
+
+	if len(failures) > 0 {
+		// Create log content
+		logContent := "RUNWAY CONDITION PARSING FAILURES IN METAR\n"
+		logContent += "=======================================\n\n"
+		logContent += strings.Join(failures, "")
+
+		// Write to log file
+		logFile := logTestFailures(t, "runway_condition_parsing_failures", logContent)
+
+		t.Errorf("Found %d runway condition parsing failures in METAR. See '%s' for details.",
+			len(failures), logFile)
 	}
 }

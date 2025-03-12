@@ -164,11 +164,16 @@ var (
 	probRegex     = regexp.MustCompile(`^PROB(\d{2})$`)
 	cavokRegex    = regexp.MustCompile(`^CAVOK$`)
 	rvrRegex      = regexp.MustCompile(`^R(\d{2}[CLR]?)/([MP]?\d+)([DNU])?$`)
-	vvRegex       = regexp.MustCompile(`^VV(\d{3})$`)
-	ndvRegex      = regexp.MustCompile(`^(\d{4,5})NDV$`)
-	eWindRegex    = regexp.MustCompile(`^E(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
-	extCloudRegex = regexp.MustCompile(`^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
-	specialRegex  = regexp.MustCompile(`^(NOSIG|AUTO|COR|CCA|NSC|NCD)$`)
+	// Enhanced runway condition regex that handles variable values, peak values and trend indicator
+	// Updated to correctly capture trend indicator both with and without a preceding slash
+	runwayCondRegex = regexp.MustCompile(`^R(\d{2}[CLR]?)/(([MP]?\d+)(V([MP]?\d+))?(FT)?)(/(U|D|N)|U|D|N)?$`)
+	// Regex for cleared runway condition (e.g., R24C/CLRD62)
+	runwayClearedRegex = regexp.MustCompile(`^R(\d{2}[CLR]?)/CLRD(\d{2})$`)
+	vvRegex            = regexp.MustCompile(`^VV(\d{3})$`)
+	ndvRegex           = regexp.MustCompile(`^(\d{4,5})NDV$`)
+	eWindRegex         = regexp.MustCompile(`^E(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
+	extCloudRegex      = regexp.MustCompile(`^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
+	specialRegex       = regexp.MustCompile(`^(NOSIG|AUTO|COR|CCA|NSC|NCD)$`)
 )
 
 // WeatherData contains common fields for different weather reports
@@ -206,23 +211,38 @@ type SiteInfo struct {
 	Country string
 }
 
+// RunwayCondition represents runway visual range and surface conditions information
+type RunwayCondition struct {
+	Runway      string // Runway identifier (e.g., "21", "24C", "27")
+	Visibility  int    // Visibility in feet or meters
+	VisMin      int    // For variable visibility - minimum value
+	VisMax      int    // For variable visibility - maximum value
+	Trend       string // Trend indicator: "U" (upward), "D" (downward), or "N" (no change)
+	Unit        string // "FT" for feet or "" for meters
+	Prefix      string // Prefix if any: "P" (more than) or "M" (less than)
+	Cleared     bool   // Whether the runway is cleared
+	ClearedTime int    // Time when runway was cleared (in minutes) for CLRD format
+	Raw         string // Original raw string
+}
+
 // METAR represents a decoded METAR weather report
 type METAR struct {
 	WeatherData
-	SiteInfo      SiteInfo
-	Wind          Wind
-	WindVariation string // Wind direction variation (e.g., "360V040")
-	Visibility    string
-	Weather       []string
-	Clouds        []Cloud
-	VertVis       int     // Vertical visibility in hundreds of feet
-	Temperature   int
-	DewPoint      *int    // Using pointer to represent missing dew point
-	Pressure      float64
-	PressureUnit  string // "hPa" or "inHg"
-	Remarks       []Remark
-	RVR           []string // Runway Visual Range
-	SpecialCodes  []string // Special codes like AUTO, NOSIG, etc.
+	SiteInfo         SiteInfo
+	Wind             Wind
+	WindVariation    string // Wind direction variation (e.g., "360V040")
+	Visibility       string
+	Weather          []string
+	Clouds           []Cloud
+	VertVis          int // Vertical visibility in hundreds of feet
+	Temperature      int
+	DewPoint         *int // Using pointer to represent missing dew point
+	Pressure         float64
+	PressureUnit     string // "hPa" or "inHg"
+	Remarks          []Remark
+	RunwayConditions []RunwayCondition // Detailed runway visual range and conditions
+	RVR              []string          // Legacy RVR field (maintained for compatibility)
+	SpecialCodes     []string          // Special codes like AUTO, NOSIG, etc.
 }
 
 // Forecast represents a single forecast period within a TAF
