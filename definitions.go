@@ -158,6 +158,7 @@ var (
 	visRegexDir   = regexp.MustCompile(`^(\d{4})([NESW]{1,2})$`)
 	cloudRegex    = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC)(\d{3})?(CB|TCU)?$`)
 	tempRegex     = regexp.MustCompile(`^(M?)(\d{2})/(M?)(\d{2})$`)
+	tempOnlyRegex = regexp.MustCompile(`^(M?)(\d{2})/$`)
 	pressureRegex = regexp.MustCompile(`^A(\d{4})$`)
 	validRegex    = regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
 	probRegex     = regexp.MustCompile(`^PROB(\d{2})$`)
@@ -214,9 +215,9 @@ type METAR struct {
 	Visibility    string
 	Weather       []string
 	Clouds        []Cloud
-	VertVis       int // Vertical visibility in hundreds of feet
+	VertVis       int     // Vertical visibility in hundreds of feet
 	Temperature   int
-	DewPoint      int
+	DewPoint      *int    // Using pointer to represent missing dew point
 	Pressure      float64
 	PressureUnit  string // "hPa" or "inHg"
 	Remarks       []Remark
