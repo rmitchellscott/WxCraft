@@ -14,12 +14,9 @@ var (
 	errorColor = color.New(color.FgRed).Add(color.Bold)
 )
 
-// processRemarks processes the remarks section of a METAR
-func processRemarks(remarkParts []string) []Remark {
-	remarks := []Remark{}
-
+func newRemarkCodes() map[string]string {
 	// Common remark codes and their descriptions
-	remarkCodes := map[string]string{
+	codes := map[string]string{
 		"AO1":    "automated station without precipitation sensor",
 		"AO2":    "automated station with precipitation sensor",
 		"AO1A":   "automated station without precipitation sensor",
@@ -35,6 +32,22 @@ func processRemarks(remarkParts []string) []Remark {
 		"FROPA":  "frontal passage",
 		"$":      "weather observing equipment requires maintenance",
 	}
+
+	// Fix invalid remark codes starting with "A0"
+	for k, v := range codes {
+		if strings.HasPrefix(k, "AO") {
+			codes["A0"+k[2:]] = v
+		}
+	}
+
+	return codes
+}
+
+// processRemarks processes the remarks section of a METAR
+func processRemarks(remarkParts []string) []Remark {
+	remarks := []Remark{}
+
+	remarkCodes := newRemarkCodes()
 
 	// Process individual remarks or groups of related remarks
 	i := 0
