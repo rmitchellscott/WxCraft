@@ -39,13 +39,18 @@ func isVisibilityInMeters(s string) bool {
 	if visRegexDir.MatchString(s) {
 		return true
 	}
-	
+
 	// Special case for visibility less than 50m reported as "0000"
 	if s == "0000" {
 		return true
 	}
-	
+
 	return false
+}
+
+// isVerticalVisibility checks if a string is a vertical visibility value
+func isVerticalVisibility(s string) bool {
+	return vvRegex.MatchString(s)
 }
 func main() {
 	// Define command-line flags
@@ -57,14 +62,20 @@ func main() {
 	radiusFlag := flag.Float64("radius", 50.0, "Search radius in miles when finding nearest airport (default 50)")
 	nearestFlag := flag.Bool("nearest", false, "Find nearest airport to your current location")
 	offlineFlag := flag.Bool("offline", false, "Operate in offline mode (only works with stdin data)")
+	data := flag.String("data", "", "Decode supplied data only")
 	flag.Parse()
 
 	if *flagNoColor {
 		color.NoColor = true // disables colorized output globally
 	}
 
+	var rawInput string
+	if data != nil {
+		rawInput = *data
+	}
+
 	// First check stdin for piped data
-	stationCode, rawInput, stdinHasData, isStdinTAF := readFromStdin()
+	stationCode, rawInput, stdinHasData, isStdinTAF := readFromStdin(rawInput)
 
 	// If no stdin data, get station code from various sources
 	if !stdinHasData {

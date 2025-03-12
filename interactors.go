@@ -9,27 +9,29 @@ import (
 )
 
 // readFromStdin reads data from stdin if available
-func readFromStdin() (string, string, bool, bool) {
-	// Check if input is being piped in (stdin)
-	info, err := os.Stdin.Stat()
-	stdinHasData := (err == nil && info.Mode()&os.ModeCharDevice == 0)
+func readFromStdin(rawInput string) (string, string, bool, bool) {
+	if rawInput == "" {
+		// Check if input is being piped in (stdin)
+		info, err := os.Stdin.Stat()
+		stdinHasData := (err == nil && info.Mode()&os.ModeCharDevice == 0)
 
-	if !stdinHasData {
-		return "", "", false, false
+		if !stdinHasData {
+			return "", "", false, false
+		}
+
+		// Read from stdin if data is piped in
+		scanner := bufio.NewScanner(os.Stdin)
+
+		// First, read the complete input which might span multiple lines
+		var inputBuilder strings.Builder
+		for scanner.Scan() {
+			line := scanner.Text()
+			inputBuilder.WriteString(line)
+			inputBuilder.WriteString("\n") // Preserve line breaks
+		}
+
+		rawInput = strings.TrimSpace(inputBuilder.String())
 	}
-
-	// Read from stdin if data is piped in
-	scanner := bufio.NewScanner(os.Stdin)
-
-	// First, read the complete input which might span multiple lines
-	var inputBuilder strings.Builder
-	for scanner.Scan() {
-		line := scanner.Text()
-		inputBuilder.WriteString(line)
-		inputBuilder.WriteString("\n") // Preserve line breaks
-	}
-
-	rawInput := strings.TrimSpace(inputBuilder.String())
 
 	// If we couldn't read any data, return
 	if rawInput == "" {

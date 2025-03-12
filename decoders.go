@@ -386,7 +386,7 @@ func DecodeMETAR(raw string) METAR {
 		// Visibility - handle special cases like "1 1/2SM" (split across two tokens)
 		if i+1 < endIndex && strings.HasSuffix(parts[i+1], "SM") &&
 			!strings.HasPrefix(parts[i], "P") && !strings.HasPrefix(parts[i], "M") &&
-			!strings.Contains(parts[i], "/") {
+			!strings.Contains(parts[i], "/") && len(parts[i]) == 1 {
 			// This could be a split visibility value like "1 1/2SM"
 			m.Visibility = parts[i] + " " + parts[i+1]
 			i++ // Skip the next token since we've processed it
@@ -398,10 +398,20 @@ func DecodeMETAR(raw string) METAR {
 			m.Visibility = part
 			continue
 		}
-		
+
 		// Check for visibility in meters
 		if isVisibilityInMeters(part) {
 			m.Visibility = part
+			continue
+		}
+
+		// Check for vertical visibility (e.g., "VV002")
+		if isVerticalVisibility(part) {
+			matches := vvRegex.FindStringSubmatch(part)
+			if len(matches) > 1 {
+				vertVis, _ := strconv.Atoi(matches[1])
+				m.VertVis = vertVis
+			}
 			continue
 		}
 
