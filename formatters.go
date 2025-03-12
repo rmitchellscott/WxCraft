@@ -33,7 +33,7 @@ func formatVisibility(visibility string) string {
 
 	// CAVOK (Ceiling And Visibility OK)
 	if visibility == "CAVOK" {
-		return "Ceiling and visibility OK (greater than 10 km)"
+		return "Greater than 10 km"
 	}
 
 	// Decode common visibility formats
@@ -149,6 +149,24 @@ func formatWeather(weather []string) string {
 	}
 
 	return strings.Join(weatherStrs, ", ")
+}
+
+// formatSpecialCodes converts special codes to human-readable format
+func formatSpecialCodes(codes []string) string {
+	if len(codes) == 0 {
+		return ""
+	}
+
+	var descriptions []string
+	for _, code := range codes {
+		if desc, ok := specialConditions[code]; ok {
+			descriptions = append(descriptions, desc)
+		} else {
+			descriptions = append(descriptions, code)
+		}
+	}
+
+	return strings.Join(descriptions, ", ")
 }
 
 // getMetarAgeColor returns the appropriate color based on METAR age
@@ -343,6 +361,22 @@ func FormatMETAR(m METAR) string {
 				// Fallback for unmatched RVR format
 				sb.WriteString("  " + rvr + "\n")
 			}
+		}
+	}
+
+	// Special codes
+	if len(m.SpecialCodes) > 0 {
+		sb.WriteString("\n")
+		sectionColor.Fprintln(&sb, "Special Conditions:")
+		for _, code := range m.SpecialCodes {
+			desc := code
+			if val, ok := specialConditions[code]; ok {
+				desc = val
+			}
+
+			// Add bullet and capitalize first letter
+			sb.WriteString("  • ")
+			sb.WriteString(capitalizeFirst(desc) + "\n")
 		}
 	}
 

@@ -63,6 +63,7 @@ var specialConditions = map[string]string{
 	"NOSIG": "no significant changes expected",
 	"AUTO":  "automated observation",
 	"COR":   "corrected report",
+	"CCA":   "corrected report",
 	"NSC":   "no significant clouds",
 	"NCD":   "no clouds detected",
 	"CAVOK": "ceiling and visibility OK",
@@ -166,7 +167,7 @@ var (
 	ndvRegex      = regexp.MustCompile(`^(\d{4,5})NDV$`)
 	eWindRegex    = regexp.MustCompile(`^E(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
 	extCloudRegex = regexp.MustCompile(`^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
-	specialRegex  = regexp.MustCompile(`^(NOSIG|AUTO|COR|NSC|NCD)$`)
+	specialRegex  = regexp.MustCompile(`^(NOSIG|AUTO|COR|CCA|NSC|NCD)$`)
 )
 
 // WeatherData contains common fields for different weather reports
@@ -213,7 +214,7 @@ type METAR struct {
 	Visibility    string
 	Weather       []string
 	Clouds        []Cloud
-	VertVis       int     // Vertical visibility in hundreds of feet
+	VertVis       int // Vertical visibility in hundreds of feet
 	Temperature   int
 	DewPoint      int
 	Pressure      float64
