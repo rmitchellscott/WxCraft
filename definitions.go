@@ -67,6 +67,7 @@ var specialConditions = map[string]string{
 	"NSC":   "no significant clouds",
 	"NCD":   "no clouds detected",
 	"CAVOK": "ceiling and visibility OK",
+	"RTD":   "routine delayed (late) observation",
 }
 
 // Common weather description mapping for simplified display
@@ -173,7 +174,7 @@ var (
 	ndvRegex           = regexp.MustCompile(`^(\d{4,5})NDV$`)
 	eWindRegex         = regexp.MustCompile(`^E(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
 	extCloudRegex      = regexp.MustCompile(`^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
-	specialRegex       = regexp.MustCompile(`^(NOSIG|AUTO|COR|CCA|NSC|NCD)$`)
+	specialRegex       = regexp.MustCompile(`^(NOSIG|AUTO|COR|CCA|NSC|NCD|RTD)$`)
 )
 
 // WeatherData contains common fields for different weather reports
