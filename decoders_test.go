@@ -382,17 +382,28 @@ func TestDecodeMETAR_unhandledValues(t *testing.T) {
 			part := fields[i]
 
 			// Skip known handled patterns
-			if windRegex.MatchString(part) || // Wind
-				visRegexM.MatchString(part) || // Visibility
+			if windRegex.MatchString(part) || // Wind in KT format
+				windRegexMPS.MatchString(part) || // Wind in MPS format
+				eWindRegex.MatchString(part) || // Wind with E prefix
+				windVarRegex.MatchString(part) || // Wind direction variation
+				visRegexM.MatchString(part) || // Visibility in SM format
+				visRegexNum.MatchString(part) || // Visibility in meters (4-digit number)
+				visRegexDir.MatchString(part) || // Visibility with direction
+				ndvRegex.MatchString(part) || // Visibility with No Directional Variation
 				isWeatherCode(part) || // Weather phenomena
 				cloudRegex.MatchString(part) || // Clouds
+				extCloudRegex.MatchString(part) || // Extended cloud format
+				vvRegex.MatchString(part) || // Vertical visibility
+				specialRegex.MatchString(part) || // Special codes
 				tempRegex.MatchString(part) || // Temperature/dewpoint
 				(len(part) > 1 && part[0] == 'Q') || // Q-format pressure
-				pressureRegex.MatchString(part) { // A-format pressure
+				pressureRegex.MatchString(part) || // A-format pressure
+				cavokRegex.MatchString(part) || // CAVOK
+				rvrRegex.MatchString(part) { // Runway Visual Range
 				continue
 			}
 
-			// Skip CAVOK (ceiling and visibility OK) - special case
+			// Skip CAVOK (ceiling and visibility OK)
 			if part == "CAVOK" {
 				continue
 			}

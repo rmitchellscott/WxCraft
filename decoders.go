@@ -341,6 +341,12 @@ func DecodeMETAR(raw string) METAR {
 			continue
 		}
 
+		// Runway Visual Range (RVR)
+		if rvrRegex.MatchString(part) {
+			m.RVR = append(m.RVR, part)
+			continue
+		}
+
 		// Weather phenomena
 		if isWeatherCode(part) {
 			m.Weather = append(m.Weather, part)

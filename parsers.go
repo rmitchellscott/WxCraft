@@ -29,24 +29,51 @@ func parseTime(timeStr string) (time.Time, error) {
 	return result, nil
 }
 
-// parseWind parses a wind string in the format "DDDSSKT" or "DDDSSGGKT"
+// parseWind parses a wind string in the format "DDDSSKT", "DDDSSGGKT", "DDDSSMPS", or "DDDSSGGMPS"
 func parseWind(windStr string) Wind {
+	// Try to match KT format first
 	matches := windRegex.FindStringSubmatch(windStr)
+	if matches != nil {
+		wind := Wind{
+			Direction: matches[1],
+			Unit:      "KT",
+		}
+
+		wind.Speed, _ = strconv.Atoi(matches[2])
+		if matches[4] != "" {
+			wind.Gust, _ = strconv.Atoi(matches[4])
+		}
+
+		return wind
+	}
+
+	// Try to match MPS format
+	matches = windRegexMPS.FindStringSubmatch(windStr)
+	if matches != nil {
+		wind := Wind{
+			Direction: matches[1],
+			Unit:      "MPS",
+		}
+
+		wind.Speed, _ = strconv.Atoi(matches[2])
+		if matches[4] != "" {
+			wind.Gust, _ = strconv.Atoi(matches[4])
+		}
+
+		return wind
+	}
+
+	return Wind{}
+}
+
+// parseWindVariation parses a wind variation string in the format "DDDVDDD"
+func parseWindVariation(varStr string) string {
+	matches := windVarRegex.FindStringSubmatch(varStr)
 	if matches == nil {
-		return Wind{}
+		return ""
 	}
 
-	wind := Wind{
-		Direction: matches[1],
-		Unit:      "KT",
-	}
-
-	wind.Speed, _ = strconv.Atoi(matches[2])
-	if matches[4] != "" {
-		wind.Gust, _ = strconv.Atoi(matches[4])
-	}
-
-	return wind
+	return varStr // Return the original string as is
 }
 
 // parseCloud parses a cloud string in the format "CCCHHH" or "CCCHHHTTT"

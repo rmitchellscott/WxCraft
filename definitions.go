@@ -58,6 +58,16 @@ var cloudTypes = map[string]string{
 	"TCU": "towering cumulus",
 }
 
+// Special aerodrome conditions
+var specialConditions = map[string]string{
+	"NOSIG": "no significant changes expected",
+	"AUTO":  "automated observation",
+	"COR":   "corrected report",
+	"NSC":   "no significant clouds",
+	"NCD":   "no clouds detected",
+	"CAVOK": "ceiling and visibility OK",
+}
+
 // Common weather description mapping for simplified display
 var weatherDescriptions = map[string]string{
 	// Basic codes
@@ -139,13 +149,24 @@ var forecastTypes = map[string]string{
 var (
 	timeRegex     = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})Z$`)
 	windRegex     = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
+	windRegexMPS  = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?MPS$`)
+	windVarRegex  = regexp.MustCompile(`^(\d{3})V(\d{3})$`)
 	visRegexM     = regexp.MustCompile(`^M?(\d+(?:/\d+)?)SM$`)
 	visRegexP     = regexp.MustCompile(`^(\d+(?:/\d+)?|M|P)(\d+)SM$`)
+	visRegexNum   = regexp.MustCompile(`^\d{4}$`)
+	visRegexDir   = regexp.MustCompile(`^(\d{4})([NESW]{1,2})$`)
 	cloudRegex    = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC)(\d{3})?(CB|TCU)?$`)
 	tempRegex     = regexp.MustCompile(`^(M?)(\d{2})/(M?)(\d{2})$`)
 	pressureRegex = regexp.MustCompile(`^A(\d{4})$`)
 	validRegex    = regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
 	probRegex     = regexp.MustCompile(`^PROB(\d{2})$`)
+	cavokRegex    = regexp.MustCompile(`^CAVOK$`)
+	rvrRegex      = regexp.MustCompile(`^R(\d{2}[CLR]?)/([MP]?\d+)([DNU])?$`)
+	vvRegex       = regexp.MustCompile(`^VV(\d{3})$`)
+	ndvRegex      = regexp.MustCompile(`^(\d{4,5})NDV$`)
+	eWindRegex    = regexp.MustCompile(`^E(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
+	extCloudRegex = regexp.MustCompile(`^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
+	specialRegex  = regexp.MustCompile(`^(NOSIG|AUTO|COR|NSC|NCD)$`)
 )
 
 // WeatherData contains common fields for different weather reports
@@ -186,16 +207,20 @@ type SiteInfo struct {
 // METAR represents a decoded METAR weather report
 type METAR struct {
 	WeatherData
-	SiteInfo    SiteInfo
-	Wind        Wind
-	Visibility  string
-	Weather     []string
-	Clouds      []Cloud
-	Temperature int
-	DewPoint    int
-	Pressure    float64
-	PressureUnit string // "hPa" or "inHg"
-	Remarks     []Remark
+	SiteInfo      SiteInfo
+	Wind          Wind
+	WindVariation string // Wind direction variation (e.g., "360V040")
+	Visibility    string
+	Weather       []string
+	Clouds        []Cloud
+	VertVis       int     // Vertical visibility in hundreds of feet
+	Temperature   int
+	DewPoint      int
+	Pressure      float64
+	PressureUnit  string // "hPa" or "inHg"
+	Remarks       []Remark
+	RVR           []string // Runway Visual Range
+	SpecialCodes  []string // Special codes like AUTO, NOSIG, etc.
 }
 
 // Forecast represents a single forecast period within a TAF
