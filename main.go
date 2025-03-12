@@ -27,6 +27,26 @@ func isWeatherCode(s string) bool {
 	}
 	return false
 }
+
+// isVisibilityInMeters checks if a string is a visibility value in meters
+func isVisibilityInMeters(s string) bool {
+	// Basic check for 4-digit number (standard visibility in meters)
+	if visRegexNum.MatchString(s) {
+		return true
+	}
+
+	// Check for visibility with direction (e.g., "2000NE")
+	if visRegexDir.MatchString(s) {
+		return true
+	}
+	
+	// Special case for visibility less than 50m reported as "0000"
+	if s == "0000" {
+		return true
+	}
+	
+	return false
+}
 func main() {
 	// Define command-line flags
 	metarOnly := flag.Bool("metar", false, "Show only METAR")
