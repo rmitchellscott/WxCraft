@@ -31,6 +31,11 @@ func formatVisibility(visibility string) string {
 		return ""
 	}
 
+	// CAVOK (Ceiling And Visibility OK)
+	if visibility == "CAVOK" {
+		return "Ceiling and visibility OK (greater than 10 km)"
+	}
+
 	// Decode common visibility formats
 	if visibility == "P6SM" {
 		return "Greater than 6 statute miles"
@@ -50,6 +55,21 @@ func formatVisibility(visibility string) string {
 		}
 	}
 
+	// Handle meter-based visibility
+	if strings.HasSuffix(visibility, "M") {
+		// Added M suffix to indicate meters
+		meters := visibility[:len(visibility)-1]
+		return meters + " meters"
+	}
+
+	// Handle visibility with direction (e.g. "4000NE")
+	matches := visRegexDir.FindStringSubmatch(visibility)
+	if matches != nil {
+		meters := matches[1]
+		direction := matches[2]
+		return meters + " meters in the " + direction + " direction"
+	}
+
 	return visibility
 }
 
@@ -66,10 +86,15 @@ func formatWind(wind Wind) string {
 		windStr += fmt.Sprintf("From %s°", wind.Direction)
 	}
 
+	unitLabel := "knots"
+	if wind.Unit == "MPS" {
+		unitLabel = "meters per second"
+	}
+
 	if wind.Speed > 0 {
-		windStr += fmt.Sprintf(" at %d knots", wind.Speed)
+		windStr += fmt.Sprintf(" at %d %s", wind.Speed, unitLabel)
 		if wind.Gust > 0 {
-			windStr += fmt.Sprintf(", gusting to %d knots", wind.Gust)
+			windStr += fmt.Sprintf(", gusting to %d %s", wind.Gust, unitLabel)
 		}
 	}
 
@@ -181,7 +206,14 @@ func FormatMETAR(m METAR) string {
 	windStr := formatWind(m.Wind)
 	if windStr != "" {
 		labelColor.Fprint(&sb, "Wind: ")
-		sb.WriteString(windStr + "\n")
+		sb.WriteString(windStr)
+
+		// Add wind variation if available
+		if m.WindVariation != "" {
+			sb.WriteString(" (varying between " + m.WindVariation + ")")
+		}
+
+		sb.WriteString("\n")
 	}
 
 	// Visibility
@@ -268,6 +300,49 @@ func FormatMETAR(m METAR) string {
 			// If no unit is specified, default to inHg with hPa conversion
 			pressureHpa := InHgToMillibars(m.Pressure)
 			sb.WriteString(fmt.Sprintf("%.2f inHg | %.1f hPa\n", m.Pressure, pressureHpa))
+		}
+	}
+
+	// Runway Visual Range (RVR)
+	if len(m.RVR) > 0 {
+		sb.WriteString("\n")
+		sectionColor.Fprintln(&sb, "Runway Visual Range:")
+		for _, rvr := range m.RVR {
+			matches := rvrRegex.FindStringSubmatch(rvr)
+			if matches != nil {
+				runway := matches[1]
+				visibility := matches[2]
+				trend := matches[3]
+
+				// Format the runway number
+				sb.WriteString("  Runway " + runway + ": ")
+
+				// Format visibility with indicators
+				if strings.HasPrefix(visibility, "P") {
+					sb.WriteString("More than " + visibility[1:] + " meters")
+				} else if strings.HasPrefix(visibility, "M") {
+					sb.WriteString("Less than " + visibility[1:] + " meters")
+				} else {
+					sb.WriteString(visibility + " meters")
+				}
+
+				// Add trend if available
+				if trend != "" {
+					trendMap := map[string]string{
+						"D": " (decreasing)",
+						"U": " (increasing)",
+						"N": " (no change)",
+					}
+					if desc, ok := trendMap[trend]; ok {
+						sb.WriteString(desc)
+					}
+				}
+
+				sb.WriteString("\n")
+			} else {
+				// Fallback for unmatched RVR format
+				sb.WriteString("  " + rvr + "\n")
+			}
 		}
 	}
 
