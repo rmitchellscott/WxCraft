@@ -260,6 +260,17 @@ func parseForecastElement(forecast *Forecast, part string) {
 		forecast.Visibility = part
 		return
 	}
+	
+	// Vertical visibility (VV)
+	if isVerticalVisibility(part) {
+		// Extract the height value
+		matches := vvRegex.FindStringSubmatch(part)
+		if len(matches) > 1 {
+			vertVis, _ := strconv.Atoi(matches[1])
+			forecast.VertVis = vertVis
+		}
+		return
+	}
 
 	// Clouds - check this BEFORE weather phenomena and make sure it takes priority
 	// over weather code detection

@@ -272,7 +272,8 @@ type Forecast struct {
 	Visibility  string
 	Weather     []string
 	Clouds      []Cloud
-	Raw         string // Raw text for this forecast period
+	VertVis     int       // Vertical visibility in hundreds of feet
+	Raw         string    // Raw text for this forecast period
 }
 
 // TAF represents a decoded Terminal Aerodrome Forecast

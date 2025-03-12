@@ -69,6 +69,10 @@ func formatVisibility(visibility string) string {
 		if meters == 0 {
 			return "Less than 50 meters"
 		}
+		// Special case for 9999 which means unlimited visibility
+		if meters == 9999 {
+			return "Unlimited visibility (greater than 10 kilometers)"
+		}
 		return formatNumberWithCommas(meters) + " meters"
 	}
 
@@ -77,6 +81,12 @@ func formatVisibility(visibility string) string {
 	if matches != nil {
 		meters := matches[1]
 		direction := matches[2]
+		
+		// Special case for 9999 which means unlimited visibility
+		if meters == "9999" {
+			return "Unlimited visibility in the " + direction + " direction"
+		}
+		
 		return meters + " meters in the " + direction + " direction"
 	}
 
@@ -249,6 +259,12 @@ func FormatMETAR(m METAR) string {
 	if visibilityDesc != "" {
 		labelColor.Fprint(&sb, "Visibility: ")
 		sb.WriteString(visibilityDesc + "\n")
+	}
+	
+	// Vertical visibility - show if available 
+	if m.VertVis > 0 {
+		labelColor.Fprint(&sb, "Vertical Visibility: ")
+		sb.WriteString(fmt.Sprintf("%s feet\n", formatNumberWithCommas(m.VertVis*100)))
 	}
 
 	// Check if we have only CLR clouds
@@ -628,6 +644,13 @@ func FormatTAF(t TAF) string {
 			sb.WriteString("   ")
 			labelColor.Fprint(&sb, "Visibility: ")
 			sb.WriteString(visibilityDesc + "\n")
+		}
+		
+		// Vertical visibility
+		if forecast.VertVis > 0 {
+			sb.WriteString("   ")
+			labelColor.Fprint(&sb, "Vertical Visibility: ")
+			sb.WriteString(fmt.Sprintf("%s feet\n", formatNumberWithCommas(forecast.VertVis*100)))
 		}
 
 		// Weather

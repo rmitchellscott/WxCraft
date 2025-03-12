@@ -126,7 +126,6 @@ func TestDecodeMETAR_remarks(t *testing.T) {
 
 func TestDecodeMETAR_visibility(t *testing.T) {
 	t.Parallel()
-	var failures []string
 
 	for line, metar := range decodeMETARList(t) {
 		fields := strings.Fields(line)
@@ -138,7 +137,7 @@ func TestDecodeMETAR_visibility(t *testing.T) {
 				// Check if this could be part of a spaced visibility like "1 1/2SM"
 				if i > 1 && strings.Contains(fields[i], "/") &&
 					!strings.HasPrefix(fields[i-1], "P") && !strings.HasPrefix(fields[i-1], "M") &&
-					!strings.Contains(fields[i-1], "/") {
+					!strings.Contains(fields[i-1], "/") && len(fields[i-1]) == 1 {
 					// This is likely a split visibility like "1 1/2SM"
 					expectedVisibility = fields[i-1] + " " + fields[i]
 				} else {
@@ -149,28 +148,16 @@ func TestDecodeMETAR_visibility(t *testing.T) {
 		}
 
 		if expectedVisibility != "" && expectedVisibility != metar.Visibility {
-			failures = append(failures, fmt.Sprintf("Raw METAR: %s\nExpected visibility: %s\nActual visibility: %s\n\n",
-				line, expectedVisibility, metar.Visibility))
+			t.Run(line, func(t *testing.T) {
+				t.Errorf("Raw METAR: %s\nExpected visibility: %s\nActual visibility: %s\n\n",
+					line, expectedVisibility, metar.Visibility)
+			})
 		}
-	}
-
-	if len(failures) > 0 {
-		// Create log content
-		logContent := "VISIBILITY PARSING FAILURES IN METAR\n"
-		logContent += "=================================\n\n"
-		logContent += strings.Join(failures, "")
-
-		// Write to log file
-		logFile := logTestFailures(t, "visibility_parsing_failures", logContent)
-
-		t.Errorf("Found %d visibility parsing failures in METAR. See '%s' for details.",
-			len(failures), logFile)
 	}
 }
 
 func TestDecodeMETAR_wind(t *testing.T) {
 	t.Parallel()
-	var failures []string
 
 	for line, metar := range decodeMETARList(t) {
 		fields := strings.Fields(line)
@@ -178,25 +165,14 @@ func TestDecodeMETAR_wind(t *testing.T) {
 			if windRegex.MatchString(field) {
 				expectedWind := parseWind(field)
 				if expectedWind != metar.Wind {
-					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nExpected wind: %+v\nActual wind: %+v\n\n",
-						line, expectedWind, metar.Wind))
+					t.Run(line, func(t *testing.T) {
+						t.Errorf("Raw METAR: %s\nExpected wind: %+v\nActual wind: %+v\n\n",
+							line, expectedWind, metar.Wind)
+					})
 				}
 				break
 			}
 		}
-	}
-
-	if len(failures) > 0 {
-		// Create log content
-		logContent := "WIND PARSING FAILURES IN METAR\n"
-		logContent += "============================\n\n"
-		logContent += strings.Join(failures, "")
-
-		// Write to log file
-		logFile := logTestFailures(t, "wind_parsing_failures", logContent)
-
-		t.Errorf("Found %d wind parsing failures in METAR. See '%s' for details.",
-			len(failures), logFile)
 	}
 }
 
@@ -598,7 +574,7 @@ func TestDecodeMETAR_unhandledValues(t *testing.T) {
 		}
 	}
 
-	t.Run("metars with failed values", func(t *testing.T) {
+	t.Run("00 metars with failed values", func(t *testing.T) {
 		assert.Zero(t, failedValueCount)
 	})
 }
