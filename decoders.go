@@ -305,7 +305,7 @@ func DecodeMETAR(raw string) METAR {
 			rmkIndex = i
 			break // RMK always ends the main section
 		}
-		if part == "TEMPO" || part == "BECMG" {
+		if part == "TEMPO" || part == "BECMG" || part == "INTER" {
 			sectionIndices = append(sectionIndices, i)
 		}
 	}
@@ -327,6 +327,7 @@ func DecodeMETAR(raw string) METAR {
 	// Variable to track if we've already found a pressure value
 	pressureFound := false
 
+	// THIS IS GROSS, I DON'T LIKE IT
 	// Special handling for split wind shear tokens
 	for i := 2; i < endIndex-1; i++ {
 		// Handle "WS ALL RWY" pattern
@@ -465,7 +466,10 @@ func DecodeMETAR(raw string) METAR {
 		}
 
 		// Pressure in Q format (hPa/millibars) - only process if we haven't found pressure yet
-		if !pressureFound && len(part) > 1 && part[0] == 'Q' {
+		if len(part) > 1 && part[0] == 'Q' {
+			if pressureFound {
+				continue
+			}
 			pressureStr := part[1:]
 			pressureInt, err := strconv.Atoi(pressureStr)
 			if err == nil {
@@ -477,7 +481,10 @@ func DecodeMETAR(raw string) METAR {
 		}
 
 		// Pressure in A format (inches of mercury) - only process if we haven't found pressure yet
-		if !pressureFound && pressureRegex.MatchString(part) {
+		if pressureRegex.MatchString(part) {
+			if pressureFound {
+				continue
+			}
 			matches := pressureRegex.FindStringSubmatch(part)
 			pressureStr := matches[1]
 			pressureInt, _ := strconv.Atoi(pressureStr)
@@ -493,6 +500,8 @@ func DecodeMETAR(raw string) METAR {
 			m.SpecialCodes = append(m.SpecialCodes, "CAVOK")
 			continue
 		}
+
+		m.Unhandled = append(m.Unhandled, part)
 	}
 
 	// Process remarks if they exist
