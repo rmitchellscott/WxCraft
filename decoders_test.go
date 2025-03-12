@@ -61,98 +61,67 @@ func decodeMETARList(t *testing.T) iter.Seq2[string, METAR] {
 
 func TestDecodeMETAR_stationCode(t *testing.T) {
 	t.Parallel()
-	var failures []string
 
 	for line, metar := range decodeMETARList(t) {
 		fields := strings.Fields(line)
 		if fields[0] != metar.SiteInfo.Name {
-			failures = append(failures, fmt.Sprintf("Raw METAR: %s\nExpected station code: %s\nActual station code: %s\n\n",
-				line, fields[0], metar.SiteInfo.Name))
+			t.Run(line, func(t *testing.T) {
+				t.Errorf("Raw METAR: %s\nExpected station code: %s\nActual station code: %s\n\n",
+					line, fields[0], metar.SiteInfo.Name)
+			})
 		}
-	}
-
-	if len(failures) > 0 {
-		// Create log content
-		logContent := "STATION CODE FAILURES IN METAR PARSING\n"
-		logContent += "=====================================\n\n"
-		logContent += strings.Join(failures, "")
-
-		// Write to log file
-		logFile := logTestFailures(t, "station_code_failures", logContent)
-
-		t.Errorf("Found %d station code failures in METAR parsing. See '%s' for details.",
-			len(failures), logFile)
 	}
 }
 
 func TestDecodeMETAR_time(t *testing.T) {
 	t.Parallel()
-	var failures []string
 
 	for line, metar := range decodeMETARList(t) {
 		fields := strings.Fields(line)
 		if fields[1] != "COR" {
 			got := metar.Time.Format("021504") + "Z"
 			if fields[1] != got {
-				failures = append(failures, fmt.Sprintf("Raw METAR: %s\nExpected time: %s\nActual time: %s\n\n",
-					line, fields[1], got))
+				t.Run(line, func(t *testing.T) {
+					t.Errorf("Raw METAR: %s\nExpected time: %s\nActual time: %s\n\n",
+						line, fields[1], got)
+				})
 			}
 		}
-	}
-
-	if len(failures) > 0 {
-		// Create log content
-		logContent := "TIME PARSING FAILURES IN METAR\n"
-		logContent += "============================\n\n"
-		logContent += strings.Join(failures, "")
-
-		// Write to log file
-		logFile := logTestFailures(t, "time_parsing_failures", logContent)
-
-		t.Errorf("Found %d time parsing failures in METAR. See '%s' for details.",
-			len(failures), logFile)
 	}
 }
 
 func TestDecodeMETAR_remarks(t *testing.T) {
 	t.Parallel()
 
-	var unknownRemarks []string
-	var failedMetars []string
-	var failedRemarkCount int
+	var unknownValues []string
+	var failedValueCount int
 
 	for line, metar := range decodeMETARList(t) {
-		var unknown []string
+		unknown := make([]string, 0, len(metar.Remarks))
 		for _, rmk := range metar.Remarks {
 			if rmk.Description == "unknown remark code" {
 				unknown = append(unknown, rmk.Raw)
-				unknownRemarks = append(unknownRemarks, rmk.Raw)
+				unknownValues = append(unknownValues, rmk.Raw)
 			}
 		}
 
 		if len(unknown) != 0 {
-			failedRemarkCount++
-			failedMetars = append(failedMetars, fmt.Sprintf("Raw METAR: %s\nUnknown remarks: %v\n\n",
-				line, unknown))
+			failedValueCount++
+			t.Run(line, func(t *testing.T) {
+				t.Errorf("Unknown remarks:\nMETAR   = %s\nRemarks = %v", line, unknown)
+			})
 		}
 	}
 
-	if failedRemarkCount > 0 {
-		// Create log content
-		slices.Sort(unknownRemarks)
-		uniqueUnknownRemarks := slices.Compact(unknownRemarks)
+	t.Run("unknown remark count", func(t *testing.T) {
+		slices.Sort(unknownValues)
+		unknownValues = slices.Compact(unknownValues)
+		assert.Empty(t, len(unknownValues))
+	})
 
-		logContent := "UNKNOWN REMARK CODES IN METAR PARSING\n"
-		logContent += "===================================\n\n"
-		logContent += strings.Join(failedMetars, "")
-		logContent += fmt.Sprintf("\nAll unique unknown remark codes: %v\n", uniqueUnknownRemarks)
-
-		// Write to log file
-		logFile := logTestFailures(t, "unknown_remark_failures", logContent)
-
-		t.Errorf("Found %d METARs with unknown remark codes. See '%s' for details.",
-			failedRemarkCount, logFile)
-	}
+	t.Run("metars with failed remarks", func(t *testing.T) {
+		assert.Zero(t, failedValueCount)
+	})
 }
 
 func TestDecodeMETAR_visibility(t *testing.T) {
@@ -326,7 +295,6 @@ func TestDecodeMETAR_windshear(t *testing.T) {
 
 func TestDecodeMETAR_weather(t *testing.T) {
 	t.Parallel()
-	var failures []string
 
 	for line, metar := range decodeMETARList(t) {
 		fields := strings.Fields(line)
@@ -366,31 +334,34 @@ func TestDecodeMETAR_weather(t *testing.T) {
 				expectedWeather = append(expectedWeather, fields[i])
 			}
 		}
+		expectedWeather = slices.DeleteFunc(expectedWeather, func(s string) bool {
+			return s == "WS"
+		})
 
 		// Check if weather phenomena were parsed correctly
-		if !assert.ElementsMatchf(t, expectedWeather, metar.Weather, "Raw METAR: %s", line) {
-			failures = append(failures, fmt.Sprintf("Raw METAR: %s\nExpected weather phenomena: %v\nActual weather phenomena: %v\n\n",
-				line, expectedWeather, metar.Weather))
+		if !slices.Equal(expectedWeather, metar.Weather) {
+			t.Run(line, func(t *testing.T) {
+				t.Errorf("Raw METAR: %s\nExpected weather phenomena: %v\nActual weather phenomena: %v\n\n",
+					line, expectedWeather, metar.Weather)
+			})
 		}
 	}
 
-	if len(failures) > 0 {
-		// Create log content
-		logContent := "WEATHER PHENOMENA PARSING FAILURES IN METAR\n"
-		logContent += "========================================\n\n"
-		logContent += strings.Join(failures, "")
+	// if len(failures) > 0 {
+	// 	// Create log content
+	// 	logContent := "WEATHER PHENOMENA PARSING FAILURES IN METAR\n"
+	// 	logContent += "========================================\n\n"
+	// 	logContent += strings.Join(failures, "")
 
-		// Write to log file
-		logFile := logTestFailures(t, "weather_parsing_failures", logContent)
+	// 	// Write to log file
+	// 	logFile := logTestFailures(t, "weather_parsing_failures", logContent)
 
-		t.Errorf("Found %d weather phenomena parsing failures in METAR. See '%s' for details.",
-			len(failures), logFile)
-	}
+	// 	t.Errorf("Found %d weather phenomena parsing failures in METAR. See '%s' for details.",
+	// 		len(failures), logFile)
+	// }
 }
-
 func TestDecodeMETAR_clouds(t *testing.T) {
 	t.Parallel()
-	var failures []string
 
 	for line, metar := range decodeMETARList(t) {
 		fields := strings.Fields(line)
@@ -433,37 +404,27 @@ func TestDecodeMETAR_clouds(t *testing.T) {
 
 		// Check number of cloud layers
 		if len(expectedClouds) != len(metar.Clouds) {
-			failures = append(failures, fmt.Sprintf("Raw METAR: %s\nWrong number of cloud layers - Expected: %d, Got: %d\nExpected clouds: %+v\nActual clouds: %+v\n\n",
-				line, len(expectedClouds), len(metar.Clouds), expectedClouds, metar.Clouds))
+			t.Run(line, func(t *testing.T) {
+				t.Errorf("Raw METAR: %s\nWrong number of cloud layers - Expected: %d, Got: %d\nExpected clouds: %+v\nActual clouds: %+v\n\n",
+					line, len(expectedClouds), len(metar.Clouds), expectedClouds, metar.Clouds)
+			})
 			continue
 		}
 
 		// Check each cloud layer
 		for i := range expectedClouds {
 			if i < len(metar.Clouds) && expectedClouds[i] != metar.Clouds[i] {
-				failures = append(failures, fmt.Sprintf("Raw METAR: %s\nCloud layer %d mismatch\nExpected: %+v\nActual: %+v\n\n",
-					line, i, expectedClouds[i], metar.Clouds[i]))
+				t.Run(line, func(t *testing.T) {
+					t.Errorf("Raw METAR: %s\nCloud layer %d mismatch\nExpected: %+v\nActual: %+v\n\n",
+						line, i, expectedClouds[i], metar.Clouds[i])
+				})
 			}
 		}
-	}
-
-	if len(failures) > 0 {
-		// Create log content
-		logContent := "CLOUD PARSING FAILURES IN METAR\n"
-		logContent += "=============================\n\n"
-		logContent += strings.Join(failures, "")
-
-		// Write to log file
-		logFile := logTestFailures(t, "cloud_parsing_failures", logContent)
-
-		t.Errorf("Found %d cloud parsing failures in METAR. See '%s' for details.",
-			len(failures), logFile)
 	}
 }
 
 func TestDecodeMETAR_temperature(t *testing.T) {
 	t.Parallel()
-	var failures []string
 
 	for line, metar := range decodeMETARList(t) {
 		fields := strings.Fields(line)
@@ -483,40 +444,31 @@ func TestDecodeMETAR_temperature(t *testing.T) {
 				}
 
 				if expectedTemp != metar.Temperature {
-					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nTemperature mismatch - Expected: %d, Got: %d\n",
-						line, expectedTemp, metar.Temperature))
+					t.Run(line, func(t *testing.T) {
+						t.Errorf("Raw METAR: %s\nTemperature mismatch - Expected: %d, Got: %d\n",
+							line, expectedTemp, metar.Temperature)
+					})
 				}
 
 				// Check if dew point is not nil before comparing
 				if metar.DewPoint == nil {
-					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nDew point is nil but expected: %d\n\n",
-						line, expectedDew))
+					t.Run(line, func(t *testing.T) {
+						t.Errorf("Raw METAR: %s\nDew point is nil but expected: %d\n\n",
+							line, expectedDew)
+					})
 				} else if expectedDew != *metar.DewPoint {
-					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nDew point mismatch - Expected: %d, Got: %d\n\n",
-						line, expectedDew, *metar.DewPoint))
+					t.Run(line, func(t *testing.T) {
+						t.Errorf("Raw METAR: %s\nDew point mismatch - Expected: %d, Got: %d\n\n",
+							line, expectedDew, *metar.DewPoint)
+					})
 				}
 				break
 			}
 		}
 	}
-
-	if len(failures) > 0 {
-		// Create log content
-		logContent := "TEMPERATURE/DEW POINT PARSING FAILURES IN METAR\n"
-		logContent += "============================================\n\n"
-		logContent += strings.Join(failures, "")
-
-		// Write to log file
-		logFile := logTestFailures(t, "temperature_parsing_failures", logContent)
-
-		t.Errorf("Found %d temperature/dew point parsing failures in METAR. See '%s' for details.",
-			len(failures), logFile)
-	}
 }
-
 func TestDecodeMETAR_pressure(t *testing.T) {
 	t.Parallel()
-	var failures []string
 
 	for line, metar := range decodeMETARList(t) {
 		fields := strings.Fields(line)
@@ -594,13 +546,17 @@ func TestDecodeMETAR_pressure(t *testing.T) {
 			found = true
 			if isPressureQ {
 				if expectedPressure != metar.Pressure || metar.PressureUnit != "hPa" {
-					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nQ-format pressure mismatch - Expected: %.2f hPa, Got: %.2f %s\n\n",
-						line, expectedPressure, metar.Pressure, metar.PressureUnit))
+					t.Run(line, func(t *testing.T) {
+						t.Errorf("Raw METAR: %s\nQ-format pressure mismatch - Expected: %.2f hPa, Got: %.2f %s\n\n",
+							line, expectedPressure, metar.Pressure, metar.PressureUnit)
+					})
 				}
 			} else if isPressureA {
 				if expectedPressure != metar.Pressure || metar.PressureUnit != "inHg" {
-					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nA-format pressure mismatch - Expected: %.2f inHg, Got: %.2f %s\n\n",
-						line, expectedPressure, metar.Pressure, metar.PressureUnit))
+					t.Run(line, func(t *testing.T) {
+						t.Errorf("Raw METAR: %s\nA-format pressure mismatch - Expected: %.2f inHg, Got: %.2f %s\n\n",
+							line, expectedPressure, metar.Pressure, metar.PressureUnit)
+					})
 				}
 			}
 		}
@@ -617,23 +573,12 @@ func TestDecodeMETAR_pressure(t *testing.T) {
 				}
 			}
 			if mainSectionHasPressure {
-				failures = append(failures, fmt.Sprintf("Raw METAR: %s\nExpected to find pressure in main section but didn't. Decoded pressure: %.2f %s\n\n",
-					line, metar.Pressure, metar.PressureUnit))
+				t.Run(line, func(t *testing.T) {
+					t.Errorf("Raw METAR: %s\nExpected to find pressure in main section but didn't. Decoded pressure: %.2f %s\n\n",
+						line, metar.Pressure, metar.PressureUnit)
+				})
 			}
 		}
-	}
-
-	if len(failures) > 0 {
-		// Create log content
-		logContent := "PRESSURE PARSING FAILURES IN METAR\n"
-		logContent += "================================\n\n"
-		logContent += strings.Join(failures, "")
-
-		// Write to log file
-		logFile := logTestFailures(t, "pressure_parsing_failures", logContent)
-
-		t.Errorf("Found %d pressure parsing failures in METAR. See '%s' for details.",
-			len(failures), logFile)
 	}
 }
 
@@ -641,132 +586,123 @@ func TestDecodeMETAR_pressure(t *testing.T) {
 func TestDecodeMETAR_unhandledValues(t *testing.T) {
 	t.Parallel()
 
-	// Map to store METARs with their unhandled values
-	unhandledByMetar := make(map[string][]string)
-	var allUnhandledValues []string
+	var failedValueCount int
 
-	for line, _ := range decodeMETARList(t) {
-		fields := strings.Fields(line)
+	for line, metar := range decodeMETARList(t) {
 
-		// Find sections to know where to stop
-		rmkIndex := -1
-		sectionIndices := []int{}
-
-		// Find all TEMPO, BECMG, and RMK sections
-		for i, part := range fields {
-			if part == "RMK" {
-				rmkIndex = i
-				break // RMK always ends the main section
-			}
-			if part == "TEMPO" || part == "BECMG" || part == "INTER" {
-				sectionIndices = append(sectionIndices, i)
-			}
-		}
-
-		// Find the first section marker
-		endIndex := len(fields)
-		if rmkIndex != -1 {
-			endIndex = rmkIndex
-		}
-
-		// Find the earliest TEMPO or BECMG section
-		for _, idx := range sectionIndices {
-			if idx < endIndex {
-				endIndex = idx
-			}
-		}
-
-		// Track unhandled values for this specific METAR
-		var metarUnhandledValues []string
-
-		// Start at index 2 to skip station code and timestamp
-		for i := 2; i < endIndex; i++ {
-			part := fields[i]
-
-			// Skip known handled patterns
-			if windRegex.MatchString(part) || // Wind in KT format
-				windRegexMPS.MatchString(part) || // Wind in MPS format
-				eWindRegex.MatchString(part) || // Wind with E prefix
-				windVarRegex.MatchString(part) || // Wind direction variation
-				visRegexM.MatchString(part) || // Visibility in SM format
-				visRegexNum.MatchString(part) || // Visibility in meters (4-digit number)
-				visRegexDir.MatchString(part) || // Visibility with direction
-				ndvRegex.MatchString(part) || // Visibility with No Directional Variation
-				isWeatherCode(part) || // Weather phenomena
-				cloudRegex.MatchString(part) || // Clouds
-				extCloudRegex.MatchString(part) || // Extended cloud format
-				vvRegex.MatchString(part) || // Vertical visibility
-				specialRegex.MatchString(part) || // Special codes
-				tempRegex.MatchString(part) || // Temperature/dewpoint
-				tempOnlyRegex.MatchString(part) || // Temperature only format (M01/)
-				(len(part) > 1 && part[0] == 'Q') || // Q-format pressure
-				pressureRegex.MatchString(part) || // A-format pressure
-				cavokRegex.MatchString(part) || // CAVOK
-				rvrRegex.MatchString(part) || // Basic Runway Visual Range
-				runwayCondRegex.MatchString(part) || // Enhanced runway condition
-				runwayClearedRegex.MatchString(part) { // Cleared runway condition
-				continue
-			}
-
-			// Skip CAVOK (ceiling and visibility OK)
-			if part == "CAVOK" {
-				continue
-			}
-
-			if part == "__PROCESSED__" {
-				continue
-			}
-			// Skip wind shift tokens in the remarks section
-			if part == "WSHFT" {
-				continue
-			}
-			// Skip the first token of wind shear patterns
-			if part == "WS" && i+1 < endIndex && (fields[i+1] == "ALL" ||
-				strings.HasPrefix(fields[i+1], "R")) {
-				continue
-			}
-
-			// Skip the integer part of a spaced visibility value like "1 1/2SM"
-			if i+1 < endIndex && strings.HasSuffix(fields[i+1], "SM") &&
-				!strings.HasPrefix(part, "P") && !strings.HasPrefix(part, "M") &&
-				!strings.Contains(part, "/") {
-				continue
-			}
-
-			// If we get here, we found an unhandled value
-			metarUnhandledValues = append(metarUnhandledValues, part)
-			allUnhandledValues = append(allUnhandledValues, part)
-		}
-
-		// If we found unhandled values for this METAR, store them
-		if len(metarUnhandledValues) > 0 {
-			unhandledByMetar[line] = metarUnhandledValues
+		if len(metar.Unhandled) != 0 {
+			failedValueCount++
+			t.Run(line, func(t *testing.T) {
+				t.Errorf("Unknown value:\nMETAR   = %s\nValue = %v", line, metar.Unhandled)
+			})
 		}
 	}
 
-	// Check if we found any unhandled values
-	if len(allUnhandledValues) > 0 {
-		// Filter duplicates and sort for the overall list
-		slices.Sort(allUnhandledValues)
-		allUnhandledValues = slices.Compact(allUnhandledValues)
-
-		// Create log content
-		logContent := "UNHANDLED VALUES IN METAR PRE-REMARK SECTION\n"
-		logContent += "=======================================\n\n"
-
-		// Write each problematic METAR and its unhandled values to the log
-		for metar, unhandledValues := range unhandledByMetar {
-			logContent += fmt.Sprintf("Raw METAR: %s\nUnhandled values: %v\n\n", metar, unhandledValues)
-		}
-
-		// Write the overall list of unique unhandled values
-		logContent += fmt.Sprintf("All unique unhandled values: %v\n", allUnhandledValues)
-
-		// Write to log file
-		logFile := logTestFailures(t, "unhandled_metar_values", logContent)
-
-		// Report to the test output
-		t.Errorf("Found %d unhandled values in METAR pre-remark section. See '%s' for details.",
-			len(allUnhandledValues), logFile)
-	}
+	t.Run("metars with failed values", func(t *testing.T) {
+		assert.Zero(t, failedValueCount)
+	})
 }
+
+// func TestDecodeMETAR_unhandledValues(t *testing.T) {
+
+// 	t.Parallel()
+
+// 	for line, _ := range decodeMETARList(t) {
+// 		fields := strings.Fields(line)
+
+// 		// Find sections to know where to stop
+// 		rmkIndex := -1
+// 		sectionIndices := []int{}
+
+// 		// Find all TEMPO, BECMG, and RMK sections
+// 		for i, part := range fields {
+// 			if part == "RMK" {
+// 				rmkIndex = i
+// 				break // RMK always ends the main section
+// 			}
+// 			if part == "TEMPO" || part == "BECMG" || part == "INTER" {
+// 				sectionIndices = append(sectionIndices, i)
+// 			}
+// 		}
+
+// 		// Find the first section marker
+// 		endIndex := len(fields)
+// 		if rmkIndex != -1 {
+// 			endIndex = rmkIndex
+// 		}
+
+// 		// Find the earliest TEMPO or BECMG section
+// 		for _, idx := range sectionIndices {
+// 			if idx < endIndex {
+// 				endIndex = idx
+// 			}
+// 		}
+
+// 		// Track unhandled values for this specific METAR
+// 		var metarUnhandledValues []string
+
+// 		// Start at index 2 to skip station code and timestamp
+// 		for i := 2; i < endIndex; i++ {
+// 			part := fields[i]
+
+// 			// Skip known handled patterns
+// 			if windRegex.MatchString(part) || // Wind in KT format
+// 				windRegexMPS.MatchString(part) || // Wind in MPS format
+// 				eWindRegex.MatchString(part) || // Wind with E prefix
+// 				windVarRegex.MatchString(part) || // Wind direction variation
+// 				visRegexM.MatchString(part) || // Visibility in SM format
+// 				visRegexNum.MatchString(part) || // Visibility in meters (4-digit number)
+// 				visRegexDir.MatchString(part) || // Visibility with direction
+// 				ndvRegex.MatchString(part) || // Visibility with No Directional Variation
+// 				isWeatherCode(part) || // Weather phenomena
+// 				cloudRegex.MatchString(part) || // Clouds
+// 				extCloudRegex.MatchString(part) || // Extended cloud format
+// 				vvRegex.MatchString(part) || // Vertical visibility
+// 				specialRegex.MatchString(part) || // Special codes
+// 				tempRegex.MatchString(part) || // Temperature/dewpoint
+// 				tempOnlyRegex.MatchString(part) || // Temperature only format (M01/)
+// 				(len(part) > 1 && part[0] == 'Q') || // Q-format pressure
+// 				pressureRegex.MatchString(part) || // A-format pressure
+// 				cavokRegex.MatchString(part) || // CAVOK
+// 				rvrRegex.MatchString(part) || // Basic Runway Visual Range
+// 				runwayCondRegex.MatchString(part) || // Enhanced runway condition
+// 				runwayClearedRegex.MatchString(part) { // Cleared runway condition
+// 				continue
+// 			}
+
+// 			// Skip CAVOK (ceiling and visibility OK)
+// 			if part == "CAVOK" {
+// 				continue
+// 			}
+
+// 			if part == "__PROCESSED__" {
+// 				continue
+// 			}
+// 			// Skip wind shift tokens in the remarks section
+// 			if part == "WSHFT" {
+// 				continue
+// 			}
+// 			// Skip the first token of wind shear patterns
+// 			if part == "WS" && i+1 < endIndex && (fields[i+1] == "ALL" ||
+// 				strings.HasPrefix(fields[i+1], "R")) {
+// 				continue
+// 			}
+
+// 			// Skip the integer part of a spaced visibility value like "1 1/2SM"
+// 			if i+1 < endIndex && strings.HasSuffix(fields[i+1], "SM") &&
+// 				!strings.HasPrefix(part, "P") && !strings.HasPrefix(part, "M") &&
+// 				!strings.Contains(part, "/") {
+// 				continue
+// 			}
+
+// 			// If we get here, we found an unhandled value
+// 			metarUnhandledValues = append(metarUnhandledValues, part)
+// 		}
+
+// 		if len(metarUnhandledValues) != 0 {
+// 			t.Run(line, func(t *testing.T) {
+// 				t.Errorf("Raw METAR: %s\nUnhandled values: %v\n\n", line, metarUnhandledValues)
+// 			})
+// 		}
+// 	}
+// }

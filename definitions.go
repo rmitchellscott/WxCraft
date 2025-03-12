@@ -258,6 +258,7 @@ type METAR struct {
 	RunwayConditions []RunwayCondition // Detailed runway visual range and conditions
 	RVR              []string          // Legacy RVR field (maintained for compatibility)
 	SpecialCodes     []string          // Special codes like AUTO, NOSIG, etc.
+	Unhandled        []string
 }
 
 // Forecast represents a single forecast period within a TAF
