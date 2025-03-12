@@ -297,30 +297,30 @@ func DecodeMETAR(raw string) METAR {
 
 	// Find the RMK section, BECMG section, and TEMPO section if they exist
 	rmkIndex := -1
-	becmgIndex := -1
-	tempoIndex := -1
+	sectionIndices := []int{}
+
+	// Find all TEMPO, BECMG, and RMK sections
 	for i, part := range parts {
 		if part == "RMK" {
 			rmkIndex = i
+			break // RMK always ends the main section
 		}
-		if part == "BECMG" {
-			becmgIndex = i
-		}
-		if part == "TEMPO" {
-			tempoIndex = i
+		if part == "TEMPO" || part == "BECMG" {
+			sectionIndices = append(sectionIndices, i)
 		}
 	}
 
-	// Process non-remark parts
+	// Find the first section marker
 	endIndex := len(parts)
 	if rmkIndex != -1 {
 		endIndex = rmkIndex
 	}
-	if becmgIndex != -1 && (rmkIndex == -1 || becmgIndex < rmkIndex) {
-		endIndex = becmgIndex
-	}
-	if tempoIndex != -1 && tempoIndex < endIndex {
-		endIndex = tempoIndex
+	
+	// Find the earliest TEMPO or BECMG section
+	for _, idx := range sectionIndices {
+		if idx < endIndex {
+			endIndex = idx
+		}
 	}
 
 	// Variable to track if we've already found a pressure value
