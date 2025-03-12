@@ -98,6 +98,60 @@ func parseCloud(cloudStr string) Cloud {
 	return cloud
 }
 
+// parseWindShear parses a wind shear string into a WindShear struct
+func parseWindShear(wsStr string) WindShear {
+	ws := WindShear{Raw: wsStr}
+
+	// Direct handling for common patterns
+	// 1. "WS ALL RWY"
+	if wsStr == "WS ALL RWY" {
+		ws.Type = "RWY"
+		ws.Phase = "ALL"
+		return ws
+	}
+
+	// 2. "WS R##" pattern (e.g. "WS R20")
+	if len(wsStr) > 3 && wsStr[:3] == "WS " && wsStr[3] == 'R' && len(wsStr) >= 5 {
+		runway := wsStr[4:]
+		ws.Type = "RWY"
+		ws.Runway = runway
+		return ws
+	}
+
+	// Try runway wind shear format
+	if matches := windShearRwyRegex.FindStringSubmatch(wsStr); matches != nil {
+		ws.Type = "RWY"
+		ws.Phase = matches[1]  // TKOF, LDG, or ALL
+		ws.Runway = matches[2] // Runway identifier (may be empty for ALL RWY)
+		return ws
+	}
+
+	// Try altitude wind shear format
+	if matches := windShearAltRegex.FindStringSubmatch(wsStr); matches != nil {
+		ws.Type = "ALT"
+		altitude, _ := strconv.Atoi(matches[1])
+		ws.Altitude = altitude
+
+		// Parse wind at the shear level
+		wind := Wind{
+			Direction: matches[2],
+			Unit:      "KT",
+		}
+		speed, _ := strconv.Atoi(matches[3])
+		wind.Speed = speed
+
+		if matches[5] != "" {
+			gust, _ := strconv.Atoi(matches[5])
+			wind.Gust = gust
+		}
+
+		ws.Wind = wind
+		return ws
+	}
+
+	return ws
+}
+
 // parseRunwayCondition parses a runway condition string into a RunwayCondition struct
 func parseRunwayCondition(condStr string) RunwayCondition {
 	// Create a RunwayCondition with the raw string
@@ -185,6 +239,13 @@ func parseForecastElement(forecast *Forecast, part string) {
 	// Wind
 	if windRegex.MatchString(part) {
 		forecast.Wind = parseWind(part)
+		return
+	}
+
+	// Wind shear
+	if strings.HasPrefix(part, "WS") {
+		ws := parseWindShear(part)
+		forecast.WindShear = append(forecast.WindShear, ws)
 		return
 	}
 

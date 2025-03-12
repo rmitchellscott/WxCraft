@@ -7,6 +7,7 @@ import (
 
 // Common weather phenomena mapping used across the application
 var weatherCodes = map[string]string{
+	"WS": "wind shear",
 	"VC": "vicinity",
 	"+":  "heavy",
 	"-":  "light",
@@ -149,22 +150,24 @@ var forecastTypes = map[string]string{
 
 // Commonly used regular expressions
 var (
-	timeRegex     = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})Z$`)
-	windRegex     = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
-	windRegexMPS  = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?MPS$`)
-	windVarRegex  = regexp.MustCompile(`^(\d{3})V(\d{3})$`)
-	visRegexM     = regexp.MustCompile(`^M?(\d+(?:/\d+)?)SM$`)
-	visRegexP     = regexp.MustCompile(`^(\d+(?:/\d+)?|M|P)(\d+)SM$`)
-	visRegexNum   = regexp.MustCompile(`^\d{4}$`)
-	visRegexDir   = regexp.MustCompile(`^(\d{4})([NESW]{1,2})$`)
-	cloudRegex    = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC)(\d{3})?(CB|TCU)?$`)
-	tempRegex     = regexp.MustCompile(`^(M?)(\d{2})/(M?)(\d{2})$`)
-	tempOnlyRegex = regexp.MustCompile(`^(M?)(\d{2})/$`)
-	pressureRegex = regexp.MustCompile(`^A(\d{4})$`)
-	validRegex    = regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
-	probRegex     = regexp.MustCompile(`^PROB(\d{2})$`)
-	cavokRegex    = regexp.MustCompile(`^CAVOK$`)
-	rvrRegex      = regexp.MustCompile(`^R(\d{2}[CLR]?)/([MP]?\d+)([DNU])?$`)
+	timeRegex         = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})Z$`)
+	windRegex         = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
+	windRegexMPS      = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?MPS$`)
+	windVarRegex      = regexp.MustCompile(`^(\d{3})V(\d{3})$`)
+	windShearAltRegex = regexp.MustCompile(`^WS(\d{3})/(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
+	windShearRwyRegex = regexp.MustCompile(`^WS(\s+(TKOF|LDG|ALL)\s+RWY(\d{2}[LCR]?)?|\s+R(\d{2}[LCR]?)?)$`)
+	visRegexM         = regexp.MustCompile(`^M?(\d+(?:/\d+)?)SM$`)
+	visRegexP         = regexp.MustCompile(`^(\d+(?:/\d+)?|M|P)(\d+)SM$`)
+	visRegexNum       = regexp.MustCompile(`^\d{4}$`)
+	visRegexDir       = regexp.MustCompile(`^(\d{4})([NESW]{1,2})$`)
+	cloudRegex        = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC)(\d{3})?(CB|TCU)?$`)
+	tempRegex         = regexp.MustCompile(`^(M?)(\d{2})/(M?)(\d{2})$`)
+	tempOnlyRegex     = regexp.MustCompile(`^(M?)(\d{2})/$`)
+	pressureRegex     = regexp.MustCompile(`^A(\d{4})$`)
+	validRegex        = regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
+	probRegex         = regexp.MustCompile(`^PROB(\d{2})$`)
+	cavokRegex        = regexp.MustCompile(`^CAVOK$`)
+	rvrRegex          = regexp.MustCompile(`^R(\d{2}[CLR]?)/([MP]?\d+)([DNU])?$`)
 	// Enhanced runway condition regex that handles variable values, peak values and trend indicator
 	// Updated to correctly capture trend indicator both with and without a preceding slash
 	runwayCondRegex = regexp.MustCompile(`^R(\d{2}[CLR]?)/(([MP]?\d+)(V([MP]?\d+))?(FT)?)(/(U|D|N)|U|D|N)?$`)
@@ -190,6 +193,16 @@ type Wind struct {
 	Speed     int
 	Gust      int
 	Unit      string
+}
+
+// WindShear represents wind shear information in a weather report
+type WindShear struct {
+	Type     string // "RWY" for runway or "ALT" for altitude
+	Runway   string // Runway identifier (e.g., "12", "30L")
+	Phase    string // "TKOF", "LDG", or "ALL"
+	Altitude int    // Altitude in hundreds of feet (only for altitude type)
+	Wind     Wind   // Wind information at the shear level (only for altitude type)
+	Raw      string // Original raw string
 }
 
 // Cloud represents cloud information in a weather report
@@ -231,6 +244,7 @@ type METAR struct {
 	WeatherData
 	SiteInfo         SiteInfo
 	Wind             Wind
+	WindShear        []WindShear
 	WindVariation    string // Wind direction variation (e.g., "360V040")
 	Visibility       string
 	Weather          []string
@@ -253,6 +267,7 @@ type Forecast struct {
 	From        time.Time // Start time of this forecast period
 	To          time.Time // End time of this forecast period (if applicable)
 	Wind        Wind
+	WindShear   []WindShear
 	Visibility  string
 	Weather     []string
 	Clouds      []Cloud

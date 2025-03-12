@@ -231,6 +231,99 @@ func TestDecodeMETAR_wind(t *testing.T) {
 	}
 }
 
+func TestDecodeMETAR_windshear(t *testing.T) {
+	t.Parallel()
+	var failures []string
+
+	for line, metar := range decodeMETARList(t) {
+		fields := strings.Fields(line)
+		var expectedWindShear []WindShear
+
+		// Find wind shear in the original METAR
+		// Skip station codes and remark sections
+		rmkIndex := -1
+		for i, part := range fields {
+			if part == "RMK" {
+				rmkIndex = i
+				break
+			}
+		}
+		endIndex := len(fields)
+		if rmkIndex != -1 {
+			endIndex = rmkIndex
+		}
+
+		// Only look for wind shear in the main section (not in remarks)
+		for i := 1; i < endIndex; i++ {
+			// Handle "WS ALL RWY" pattern
+			if i+2 < endIndex && fields[i] == "WS" && fields[i+1] == "ALL" && fields[i+2] == "RWY" {
+				expectedWindShear = append(expectedWindShear, WindShear{
+					Type:  "RWY",
+					Phase: "ALL",
+					Raw:   "WS ALL RWY",
+				})
+				i += 2 // Skip the next two tokens
+			} else if i+1 < endIndex && fields[i] == "WS" && strings.HasPrefix(fields[i+1], "R") && len(fields[i+1]) > 1 {
+				// Handle "WS R##" pattern
+				expectedWindShear = append(expectedWindShear, WindShear{
+					Type:   "RWY",
+					Runway: fields[i+1][1:], // Remove the 'R' prefix
+					Raw:    fields[i] + " " + fields[i+1],
+				})
+				i++ // Skip the next token
+			} else if strings.HasPrefix(fields[i], "WS") && fields[i] != "WS" &&
+				!strings.HasPrefix(fields[i], "WSSS") &&
+				!strings.HasPrefix(fields[i], "WSSL") &&
+				!strings.HasPrefix(fields[i], "WSAP") &&
+				!strings.HasPrefix(fields[i], "WSHFT") {
+				// Single-token wind shear format
+				// Skip station codes that start with WS
+				// Skip WSHFT which is a wind shift in remarks
+				expectedWindShear = append(expectedWindShear, parseWindShear(fields[i]))
+			}
+		}
+
+		// Skip if no wind shear in the raw METAR
+		if len(expectedWindShear) == 0 && len(metar.WindShear) == 0 {
+			continue
+		}
+
+		// Check if wind shear was parsed correctly
+		if len(expectedWindShear) != len(metar.WindShear) {
+			failures = append(failures, fmt.Sprintf("Raw METAR: %s\nWrong number of wind shear entries - Expected: %d, Got: %d\nExpected: %+v\nActual: %+v\n\n",
+				line, len(expectedWindShear), len(metar.WindShear), expectedWindShear, metar.WindShear))
+			continue
+		}
+
+		// Compare each wind shear entry
+		for i, expected := range expectedWindShear {
+			actual := metar.WindShear[i]
+
+			// Compare Type, Runway and Phase fields which are most relevant
+			if expected.Type != actual.Type ||
+				expected.Runway != actual.Runway ||
+				expected.Phase != actual.Phase {
+
+				failures = append(failures, fmt.Sprintf("Raw METAR: %s\nWind shear entry mismatch\nExpected: %+v\nActual: %+v\n\n",
+					line, expected, actual))
+			}
+		}
+	}
+
+	if len(failures) > 0 {
+		// Create log content
+		logContent := "WIND SHEAR PARSING FAILURES IN METAR\n"
+		logContent += "==================================\n\n"
+		logContent += strings.Join(failures, "")
+
+		// Write to log file
+		logFile := logTestFailures(t, "wind_shear_parsing_failures", logContent)
+
+		t.Errorf("Found %d wind shear parsing failures in METAR. See '%s' for details.",
+			len(failures), logFile)
+	}
+}
+
 func TestDecodeMETAR_weather(t *testing.T) {
 	t.Parallel()
 	var failures []string
@@ -617,6 +710,19 @@ func TestDecodeMETAR_unhandledValues(t *testing.T) {
 
 			// Skip CAVOK (ceiling and visibility OK)
 			if part == "CAVOK" {
+				continue
+			}
+
+			if part == "__PROCESSED__" {
+				continue
+			}
+			// Skip wind shift tokens in the remarks section
+			if part == "WSHFT" {
+				continue
+			}
+			// Skip the first token of wind shear patterns
+			if part == "WS" && i+1 < endIndex && (fields[i+1] == "ALL" ||
+				strings.HasPrefix(fields[i+1], "R")) {
 				continue
 			}
 

@@ -327,6 +327,40 @@ func FormatMETAR(m METAR) string {
 		}
 	}
 
+	// Wind Shear
+	if len(m.WindShear) > 0 {
+		sb.WriteString("\n")
+		sectionColor.Fprintln(&sb, "Wind Shear:")
+		for _, ws := range m.WindShear {
+			if ws.Type == "RWY" {
+				if ws.Runway != "" {
+					sb.WriteString(fmt.Sprintf("  Windshear on runway %s\n", ws.Runway))
+				} else if ws.Phase == "TKOF" {
+					sb.WriteString("  Takeoff windshear\n")
+				} else if ws.Phase == "LDG" {
+					sb.WriteString("  Landing windshear\n")
+				} else if ws.Phase == "ALL" {
+					sb.WriteString("  All runways\n")
+				} else {
+					sb.WriteString("  Runway windshear\n") // Fallback
+				}
+			} else if ws.Type == "ALT" {
+				var directionStr string
+				if ws.Wind.Direction == "VRB" {
+					directionStr = "Variable"
+				} else {
+					directionStr = fmt.Sprintf("From %s°", ws.Wind.Direction)
+				}
+
+				sb.WriteString(fmt.Sprintf("  At %d feet: %s at %d %s\n",
+					ws.Altitude*100,
+					directionStr,
+					ws.Wind.Speed,
+					ws.Wind.Unit))
+			}
+		}
+	}
+
 	// Runway Conditions and Visual Range
 	if len(m.RunwayConditions) > 0 {
 		sb.WriteString("\n")
@@ -600,6 +634,38 @@ func FormatTAF(t TAF) string {
 			sb.WriteString("   ")
 			labelColor.Fprint(&sb, "Clouds: ")
 			sb.WriteString(capitalizeFirst(cloudStr) + "\n")
+		}
+
+		// Wind Shear
+		if len(forecast.WindShear) > 0 {
+			sb.WriteString("   ")
+			labelColor.Fprint(&sb, "Wind Shear: ")
+			for i, ws := range forecast.WindShear {
+				if i > 0 {
+					sb.WriteString("   ")
+				}
+				if ws.Type == "RWY" {
+					if ws.Runway != "" {
+						sb.WriteString(fmt.Sprintf("%s runway %s", ws.Phase, ws.Runway))
+					} else {
+						sb.WriteString(fmt.Sprintf("%s all runways", ws.Phase))
+					}
+				} else if ws.Type == "ALT" {
+					var directionStr string
+					if ws.Wind.Direction == "VRB" {
+						directionStr = "Variable"
+					} else {
+						directionStr = fmt.Sprintf("From %s°", ws.Wind.Direction)
+					}
+
+					sb.WriteString(fmt.Sprintf("At %d feet: %s at %d %s",
+						ws.Altitude*100,
+						directionStr,
+						ws.Wind.Speed,
+						ws.Wind.Unit))
+				}
+				sb.WriteString("\n")
+			}
 		}
 	}
 
