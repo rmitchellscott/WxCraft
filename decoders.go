@@ -341,7 +341,17 @@ func DecodeMETAR(raw string) METAR {
 			continue
 		}
 
-		// Visibility
+		// Visibility - handle special cases like "1 1/2SM" (split across two tokens)
+		if i+1 < endIndex && strings.HasSuffix(parts[i+1], "SM") && 
+		   !strings.HasPrefix(parts[i], "P") && !strings.HasPrefix(parts[i], "M") && 
+		   !strings.Contains(parts[i], "/") {
+			// This could be a split visibility value like "1 1/2SM"
+			m.Visibility = parts[i] + " " + parts[i+1]
+			i++ // Skip the next token since we've processed it
+			continue
+		}
+
+		// Standard visibility check
 		if visRegexM.MatchString(part) {
 			m.Visibility = part
 			continue
@@ -366,7 +376,7 @@ func DecodeMETAR(raw string) METAR {
 			continue
 		}
 
-		// Temperature and dew point
+		// Temperature and dew point - standard format
 		if tempRegex.MatchString(part) {
 			matches := tempRegex.FindStringSubmatch(part)
 			temp, _ := strconv.Atoi(matches[2])
@@ -379,7 +389,20 @@ func DecodeMETAR(raw string) METAR {
 			if matches[3] == "M" {
 				dewPoint = -dewPoint
 			}
-			m.DewPoint = dewPoint
+			// Store dew point as a pointer to int
+			m.DewPoint = &dewPoint
+			continue
+		}
+
+		// Temperature only format "M01/" (missing dew point)
+		if tempOnlyRegex.MatchString(part) {
+			matches := tempOnlyRegex.FindStringSubmatch(part)
+			temp, _ := strconv.Atoi(matches[2])
+			if matches[1] == "M" {
+				temp = -temp
+			}
+			m.Temperature = temp
+			// Leave DewPoint as nil to indicate missing value
 			continue
 		}
 

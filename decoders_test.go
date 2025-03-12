@@ -161,14 +161,27 @@ func TestDecodeMETAR_visibility(t *testing.T) {
 
 	for line, metar := range decodeMETARList(t) {
 		fields := strings.Fields(line)
-		for _, field := range fields[1:] {
-			if strings.HasSuffix(field, "SM") {
-				if field != metar.Visibility {
-					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nExpected visibility: %s\nActual visibility: %s\n\n",
-						line, field, metar.Visibility))
+
+		// Find visibility value with SM suffix
+		var expectedVisibility string
+		for i := 1; i < len(fields); i++ {
+			if strings.HasSuffix(fields[i], "SM") {
+				// Check if this could be part of a spaced visibility like "1 1/2SM"
+				if i > 1 && strings.Contains(fields[i], "/") &&
+					!strings.HasPrefix(fields[i-1], "P") && !strings.HasPrefix(fields[i-1], "M") &&
+					!strings.Contains(fields[i-1], "/") {
+					// This is likely a split visibility like "1 1/2SM"
+					expectedVisibility = fields[i-1] + " " + fields[i]
+				} else {
+					expectedVisibility = fields[i]
 				}
 				break
 			}
+		}
+
+		if expectedVisibility != "" && expectedVisibility != metar.Visibility {
+			failures = append(failures, fmt.Sprintf("Raw METAR: %s\nExpected visibility: %s\nActual visibility: %s\n\n",
+				line, expectedVisibility, metar.Visibility))
 		}
 	}
 
@@ -376,9 +389,18 @@ func TestDecodeMETAR_temperature(t *testing.T) {
 					expectedDew = -expectedDew
 				}
 
-				if expectedTemp != metar.Temperature || expectedDew != metar.DewPoint {
-					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nTemperature mismatch - Expected: %d, Got: %d\nDew point mismatch - Expected: %d, Got: %d\n\n",
-						line, expectedTemp, metar.Temperature, expectedDew, metar.DewPoint))
+				if expectedTemp != metar.Temperature {
+					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nTemperature mismatch - Expected: %d, Got: %d\n",
+						line, expectedTemp, metar.Temperature))
+				}
+
+				// Check if dew point is not nil before comparing
+				if metar.DewPoint == nil {
+					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nDew point is nil but expected: %d\n\n",
+						line, expectedDew))
+				} else if expectedDew != *metar.DewPoint {
+					failures = append(failures, fmt.Sprintf("Raw METAR: %s\nDew point mismatch - Expected: %d, Got: %d\n\n",
+						line, expectedDew, *metar.DewPoint))
 				}
 				break
 			}
@@ -398,6 +420,25 @@ func TestDecodeMETAR_temperature(t *testing.T) {
 			len(failures), logFile)
 	}
 }
+
+// func TestDecodeMETAR_temperatureOnlyFormat(t *testing.T) {
+// 	// Test case with temperature only format where dew point is missing
+// 	metarString := "K2D5 081355Z AUTO 27011KT M01/ A2990 RMK AO2"
+// 	metar := DecodeMETAR(metarString)
+
+// 	// Check station code
+// 	assert.Equal(t, "K2D5", metar.Station, "Station code should be K2D5")
+
+// 	// Check temperature - should be -1°C
+// 	assert.Equal(t, -1, metar.Temperature, "Temperature should be -1")
+
+// 	// Check dew point - should be nil for missing value
+// 	assert.Nil(t, metar.DewPoint, "Dew point should be nil (missing)")
+
+// 	// Check pressure
+// 	assert.Equal(t, 29.90, metar.Pressure, "Pressure should be 29.90 inHg")
+// 	assert.Equal(t, "inHg", metar.PressureUnit, "Pressure unit should be inHg")
+// }
 
 func TestDecodeMETAR_pressure(t *testing.T) {
 	t.Parallel()
@@ -583,6 +624,7 @@ func TestDecodeMETAR_unhandledValues(t *testing.T) {
 				vvRegex.MatchString(part) || // Vertical visibility
 				specialRegex.MatchString(part) || // Special codes
 				tempRegex.MatchString(part) || // Temperature/dewpoint
+				tempOnlyRegex.MatchString(part) || // Temperature only format (M01/)
 				(len(part) > 1 && part[0] == 'Q') || // Q-format pressure
 				pressureRegex.MatchString(part) || // A-format pressure
 				cavokRegex.MatchString(part) || // CAVOK
@@ -592,6 +634,13 @@ func TestDecodeMETAR_unhandledValues(t *testing.T) {
 
 			// Skip CAVOK (ceiling and visibility OK)
 			if part == "CAVOK" {
+				continue
+			}
+
+			// Skip the integer part of a spaced visibility value like "1 1/2SM"
+			if i+1 < endIndex && strings.HasSuffix(fields[i+1], "SM") &&
+				!strings.HasPrefix(part, "P") && !strings.HasPrefix(part, "M") &&
+				!strings.Contains(part, "/") {
 				continue
 			}
 

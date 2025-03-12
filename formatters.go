@@ -299,9 +299,15 @@ func FormatMETAR(m METAR) string {
 	sb.WriteString(fmt.Sprintf("%d°C | %d°F\n", m.Temperature, tempF))
 
 	// Dew point with Fahrenheit conversion
-	dewPointF := CelsiusToFahrenheit(m.DewPoint)
-	labelColor.Fprint(&sb, "Dew Point: ")
-	sb.WriteString(fmt.Sprintf("%d°C | %d°F\n", m.DewPoint, dewPointF))
+	if m.DewPoint == nil {
+		// Case for missing dew point
+		labelColor.Fprint(&sb, "Dew Point: ")
+		sb.WriteString("Not available\n")
+	} else {
+		dewPointF := CelsiusToFahrenheit(*m.DewPoint)
+		labelColor.Fprint(&sb, "Dew Point: ")
+		sb.WriteString(fmt.Sprintf("%d°C | %d°F\n", *m.DewPoint, dewPointF))
+	}
 
 	// Pressure with conversion to opposite unit
 	if m.Pressure > 0 {
