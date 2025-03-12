@@ -117,7 +117,7 @@ Visibility: 10 statute miles
 Weather: Clear
 Temperature: 10°C | 50°F
 Dew Point: 8°C | 46°F
-Pressure: 30.22 inHg | 1023.4 mbar
+Pressure: 30.22 inHg | 1023.4 hPa
 
 Remarks:
   AO2: Automated station with precipitation sensor

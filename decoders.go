@@ -329,6 +329,12 @@ func DecodeMETAR(raw string) METAR {
 	for i := 2; i < endIndex; i++ {
 		part := parts[i]
 
+		// Special conditions (AUTO, COR, etc.)
+		if specialRegex.MatchString(part) {
+			m.SpecialCodes = append(m.SpecialCodes, part)
+			continue
+		}
+
 		// Wind
 		if windRegex.MatchString(part) {
 			m.Wind = parseWind(part)
@@ -397,6 +403,13 @@ func DecodeMETAR(raw string) METAR {
 			m.Pressure = float64(pressureInt) / 100.0
 			m.PressureUnit = "inHg"
 			pressureFound = true
+			continue
+		}
+
+		// CAVOK - Ceiling And Visibility OK
+		if cavokRegex.MatchString(part) {
+			m.Visibility = "CAVOK"
+			m.SpecialCodes = append(m.SpecialCodes, "CAVOK")
 			continue
 		}
 	}

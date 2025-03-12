@@ -22,6 +22,9 @@ func newRemarkCodes() map[string]string {
 		"AO1A":   "automated station without precipitation sensor",
 		"AO2A":   "automated station with precipitation sensor",
 		"SLP":    "sea level pressure",
+		"SLPNO":  "sea level pressure information not available",
+		"FZRANO": "freezing rain information not available",
+		"TSNO":   "thunderstorm information not available",
 		"RMK":    "remarks indicator",
 		"PRESRR": "pressure rising rapidly",
 		"PRESFR": "pressure falling rapidly",
@@ -149,24 +152,33 @@ func processRemarks(remarkParts []string) []Remark {
 
 		// Handle sea level pressure
 		if strings.HasPrefix(part, "SLP") {
-			slpValue := part[3:] // This gets "093" from "SLP093"
-			slp, err := strconv.Atoi(slpValue)
-			if err == nil {
-				// SLP is given in tenths of millibars with an implied leading 10 or 9
-				var prefix float64 = 1000.0
-				if slp >= 500 {
-					prefix = 900.0
-				}
-				slpHpa := prefix + float64(slp)/10
+			slpValue := part[3:] // This gets the value after "SLP"
+
+			if slpValue == "NO" {
+				// Handle the "SLPNO" case where sea-level pressure is not available
 				remarks = append(remarks, Remark{
 					Raw:         part,
-					Description: fmt.Sprintf("sea level pressure %.1f hPa", slpHpa),
+					Description: "sea level pressure not available",
 				})
 			} else {
-				remarks = append(remarks, Remark{
-					Raw:         part,
-					Description: "sea level pressure (invalid format)",
-				})
+				slp, err := strconv.Atoi(slpValue)
+				if err == nil {
+					// SLP is given in tenths of millibars with an implied leading 10 or 9
+					var prefix float64 = 1000.0
+					if slp >= 500 {
+						prefix = 900.0
+					}
+					slpHpa := prefix + float64(slp)/10
+					remarks = append(remarks, Remark{
+						Raw:         part,
+						Description: fmt.Sprintf("sea level pressure %.1f hPa", slpHpa),
+					})
+				} else {
+					remarks = append(remarks, Remark{
+						Raw:         part,
+						Description: "sea level pressure (invalid format)",
+					})
+				}
 			}
 			i++
 			continue
