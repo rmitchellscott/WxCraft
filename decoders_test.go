@@ -228,32 +228,30 @@ func TestDecodeMETAR_weather(t *testing.T) {
 
 		// Find sections to know where to stop
 		rmkIndex := -1
-		becmgIndex := -1
-		tempoIndex := -1
+		sectionIndices := []int{}
+
+		// Find all TEMPO, BECMG, and RMK sections
 		for i, part := range fields {
 			if part == "RMK" {
 				rmkIndex = i
-				break
+				break // RMK always ends the main section
 			}
-			if part == "BECMG" {
-				becmgIndex = i
-				break
-			}
-			if part == "TEMPO" {
-				tempoIndex = i
-				break
+			if part == "TEMPO" || part == "BECMG" {
+				sectionIndices = append(sectionIndices, i)
 			}
 		}
 
+		// Find the first section marker
 		endIndex := len(fields)
 		if rmkIndex != -1 {
 			endIndex = rmkIndex
 		}
-		if becmgIndex != -1 && (rmkIndex == -1 || becmgIndex < rmkIndex) {
-			endIndex = becmgIndex
-		}
-		if tempoIndex != -1 && tempoIndex < endIndex {
-			endIndex = tempoIndex
+
+		// Find the earliest TEMPO or BECMG section
+		for _, idx := range sectionIndices {
+			if idx < endIndex {
+				endIndex = idx
+			}
 		}
 
 		// Collect weather phenomena from original METAR
@@ -294,32 +292,30 @@ func TestDecodeMETAR_clouds(t *testing.T) {
 
 		// Find sections to know where to stop
 		rmkIndex := -1
-		becmgIndex := -1
-		tempoIndex := -1
+		sectionIndices := []int{}
+
+		// Find all TEMPO, BECMG, and RMK sections
 		for i, part := range fields {
 			if part == "RMK" {
 				rmkIndex = i
-				break
+				break // RMK always ends the main section
 			}
-			if part == "BECMG" {
-				becmgIndex = i
-				break
-			}
-			if part == "TEMPO" {
-				tempoIndex = i
-				break
+			if part == "TEMPO" || part == "BECMG" {
+				sectionIndices = append(sectionIndices, i)
 			}
 		}
 
+		// Find the first section marker
 		endIndex := len(fields)
 		if rmkIndex != -1 {
 			endIndex = rmkIndex
 		}
-		if becmgIndex != -1 && (rmkIndex == -1 || becmgIndex < rmkIndex) {
-			endIndex = becmgIndex
-		}
-		if tempoIndex != -1 && tempoIndex < endIndex {
-			endIndex = tempoIndex
+
+		// Find the earliest TEMPO or BECMG section
+		for _, idx := range sectionIndices {
+			if idx < endIndex {
+				endIndex = idx
+			}
 		}
 
 		// Collect cloud data from original METAR
@@ -415,31 +411,32 @@ func TestDecodeMETAR_pressure(t *testing.T) {
 			continue
 		}
 
-		// Find the RMK section, BECMG section, and TEMPO section if they exist
+		// Find sections to know where to stop
 		rmkIndex := -1
-		becmgIndex := -1
-		tempoIndex := -1
+		sectionIndices := []int{}
+
+		// Find all TEMPO, BECMG, and RMK sections
 		for i, part := range fields {
 			if part == "RMK" {
 				rmkIndex = i
+				break // RMK always ends the main section
 			}
-			if part == "BECMG" {
-				becmgIndex = i
-			}
-			if part == "TEMPO" {
-				tempoIndex = i
+			if part == "TEMPO" || part == "BECMG" {
+				sectionIndices = append(sectionIndices, i)
 			}
 		}
 
+		// Find the first section marker
 		endIndex := len(fields)
 		if rmkIndex != -1 {
 			endIndex = rmkIndex
 		}
-		if becmgIndex != -1 && (rmkIndex == -1 || becmgIndex < rmkIndex) {
-			endIndex = becmgIndex
-		}
-		if tempoIndex != -1 && tempoIndex < endIndex {
-			endIndex = tempoIndex
+
+		// Find the earliest TEMPO or BECMG section
+		for _, idx := range sectionIndices {
+			if idx < endIndex {
+				endIndex = idx
+			}
 		}
 
 		found := false
@@ -536,35 +533,32 @@ func TestDecodeMETAR_unhandledValues(t *testing.T) {
 	for line, _ := range decodeMETARList(t) {
 		fields := strings.Fields(line)
 
-		// Find the RMK section, BECMG section, and TEMPO section if they exist
+		// Find sections to know where to stop
 		rmkIndex := -1
-		becmgIndex := -1
-		tempoIndex := -1
+		sectionIndices := []int{}
+
+		// Find all TEMPO, BECMG, and RMK sections
 		for i, part := range fields {
 			if part == "RMK" {
 				rmkIndex = i
-				break
+				break // RMK always ends the main section
 			}
-			if part == "BECMG" {
-				becmgIndex = i
-				break
-			}
-			if part == "TEMPO" {
-				tempoIndex = i
-				break
+			if part == "TEMPO" || part == "BECMG" {
+				sectionIndices = append(sectionIndices, i)
 			}
 		}
 
-		// Determine the end of the pre-remark section (before RMK, BECMG, or TEMPO)
+		// Find the first section marker
 		endIndex := len(fields)
 		if rmkIndex != -1 {
 			endIndex = rmkIndex
 		}
-		if becmgIndex != -1 && (becmgIndex < endIndex) {
-			endIndex = becmgIndex
-		}
-		if tempoIndex != -1 && (tempoIndex < endIndex) {
-			endIndex = tempoIndex
+
+		// Find the earliest TEMPO or BECMG section
+		for _, idx := range sectionIndices {
+			if idx < endIndex {
+				endIndex = idx
+			}
 		}
 
 		// Track unhandled values for this specific METAR
