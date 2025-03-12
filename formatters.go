@@ -61,6 +61,16 @@ func formatVisibility(visibility string) string {
 		meters := visibility[:len(visibility)-1]
 		return meters + " meters"
 	}
+	
+	// Handle standard 4-digit meter visibility format (e.g. "5000" for 5000 meters)
+	if visRegexNum.MatchString(visibility) {
+		meters, _ := strconv.Atoi(visibility)
+		// Special case for visibility less than 50m reported as "0000"
+		if meters == 0 {
+			return "Less than 50 meters"
+		}
+		return formatNumberWithCommas(meters) + " meters"
+	}
 
 	// Handle visibility with direction (e.g. "4000NE")
 	matches := visRegexDir.FindStringSubmatch(visibility)

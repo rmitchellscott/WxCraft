@@ -249,22 +249,37 @@ func parseForecastElement(forecast *Forecast, part string) {
 		return
 	}
 
-	// Visibility
+	// Visibility in statute miles
 	if visRegexP.MatchString(part) || part == "P6SM" {
 		forecast.Visibility = part
 		return
 	}
+	
+	// Visibility in meters
+	if isVisibilityInMeters(part) {
+		forecast.Visibility = part
+		return
+	}
 
-	// Clouds - check this BEFORE weather phenomena
+	// Clouds - check this BEFORE weather phenomena and make sure it takes priority
+	// over weather code detection
 	if cloudRegex.MatchString(part) {
 		cloud := parseCloud(part)
 		forecast.Clouds = append(forecast.Clouds, cloud)
 		return
 	}
 
-	// Weather phenomena - check for weather codes
+	// Weather phenomena - check for weather codes, but not if it looks like a cloud code
 	if isWeatherCode(part) {
-		forecast.Weather = append(forecast.Weather, part)
-		return
+		// Additional check to avoid misclassifying cloud patterns as weather codes
+		if !strings.HasPrefix(part, "SKC") && 
+		   !strings.HasPrefix(part, "CLR") && 
+		   !strings.HasPrefix(part, "FEW") && 
+		   !strings.HasPrefix(part, "SCT") && 
+		   !strings.HasPrefix(part, "BKN") && 
+		   !strings.HasPrefix(part, "OVC") {
+			forecast.Weather = append(forecast.Weather, part)
+			return
+		}
 	}
 }

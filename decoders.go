@@ -393,8 +393,14 @@ func DecodeMETAR(raw string) METAR {
 			continue
 		}
 
-		// Standard visibility check
+		// Standard visibility check for statute miles
 		if visRegexM.MatchString(part) {
+			m.Visibility = part
+			continue
+		}
+		
+		// Check for visibility in meters
+		if isVisibilityInMeters(part) {
 			m.Visibility = part
 			continue
 		}
