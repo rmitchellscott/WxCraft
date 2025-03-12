@@ -323,11 +323,45 @@ func DecodeMETAR(raw string) METAR {
 		}
 	}
 
+	// Process fields in the main METAR section
 	// Variable to track if we've already found a pressure value
 	pressureFound := false
 
+	// Special handling for split wind shear tokens
+	for i := 2; i < endIndex-1; i++ {
+		// Handle "WS ALL RWY" pattern
+		if i+2 < endIndex && parts[i] == "WS" && parts[i+1] == "ALL" && parts[i+2] == "RWY" {
+			// Found the three-token pattern for wind shear
+			m.WindShear = append(m.WindShear, WindShear{
+				Type:  "RWY",
+				Phase: "ALL",
+				Raw:   "WS ALL RWY",
+			})
+			// Skip these tokens in the main loop
+			parts[i] = "__PROCESSED__"
+			parts[i+1] = "__PROCESSED__"
+			parts[i+2] = "__PROCESSED__"
+			// Handle "WS R##" pattern
+		} else if i+1 < endIndex && parts[i] == "WS" && strings.HasPrefix(parts[i+1], "R") && len(parts[i+1]) > 1 {
+			// Found the two-token pattern for wind shear on a runway
+			m.WindShear = append(m.WindShear, WindShear{
+				Type:   "RWY",
+				Runway: parts[i+1][1:], // Remove the 'R' prefix
+				Raw:    parts[i] + " " + parts[i+1],
+			})
+			// Skip these tokens in the main loop
+			parts[i] = "__PROCESSED__"
+			parts[i+1] = "__PROCESSED__"
+		}
+	}
+
 	for i := 2; i < endIndex; i++ {
 		part := parts[i]
+
+		// Skip tokens that were already processed
+		if part == "__PROCESSED__" {
+			continue
+		}
 
 		// Special conditions (AUTO, COR, etc.)
 		if specialRegex.MatchString(part) {
@@ -338,6 +372,13 @@ func DecodeMETAR(raw string) METAR {
 		// Wind
 		if windRegex.MatchString(part) {
 			m.Wind = parseWind(part)
+			continue
+		}
+
+		// Check for wind shear
+		if strings.HasPrefix(part, "WS") {
+			ws := parseWindShear(part)
+			m.WindShear = append(m.WindShear, ws)
 			continue
 		}
 
@@ -376,6 +417,13 @@ func DecodeMETAR(raw string) METAR {
 		// Weather phenomena
 		if isWeatherCode(part) {
 			m.Weather = append(m.Weather, part)
+			continue
+		}
+
+		// Wind shear
+		if strings.Contains(part, "WS") {
+			ws := parseWindShear(part)
+			m.WindShear = append(m.WindShear, ws)
 			continue
 		}
 
