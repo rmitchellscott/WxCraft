@@ -315,7 +315,7 @@ func DecodeMETAR(raw string) METAR {
 	if rmkIndex != -1 {
 		endIndex = rmkIndex
 	}
-	
+
 	// Find the earliest TEMPO or BECMG section
 	for _, idx := range sectionIndices {
 		if idx < endIndex {
@@ -342,9 +342,9 @@ func DecodeMETAR(raw string) METAR {
 		}
 
 		// Visibility - handle special cases like "1 1/2SM" (split across two tokens)
-		if i+1 < endIndex && strings.HasSuffix(parts[i+1], "SM") && 
-		   !strings.HasPrefix(parts[i], "P") && !strings.HasPrefix(parts[i], "M") && 
-		   !strings.Contains(parts[i], "/") {
+		if i+1 < endIndex && strings.HasSuffix(parts[i+1], "SM") &&
+			!strings.HasPrefix(parts[i], "P") && !strings.HasPrefix(parts[i], "M") &&
+			!strings.Contains(parts[i], "/") {
 			// This could be a split visibility value like "1 1/2SM"
 			m.Visibility = parts[i] + " " + parts[i+1]
 			i++ // Skip the next token since we've processed it
@@ -357,7 +357,17 @@ func DecodeMETAR(raw string) METAR {
 			continue
 		}
 
-		// Runway Visual Range (RVR)
+		// Runway Visual Range (RVR) and Runway Conditions
+		if runwayClearedRegex.MatchString(part) || runwayCondRegex.MatchString(part) {
+			// Parse the runway condition
+			cond := parseRunwayCondition(part)
+			m.RunwayConditions = append(m.RunwayConditions, cond)
+			// Add to legacy RVR field for compatibility
+			m.RVR = append(m.RVR, part)
+			continue
+		}
+
+		// Basic RVR format (legacy)
 		if rvrRegex.MatchString(part) {
 			m.RVR = append(m.RVR, part)
 			continue

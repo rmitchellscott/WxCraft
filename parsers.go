@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -95,6 +96,88 @@ func parseCloud(cloudStr string) Cloud {
 	}
 
 	return cloud
+}
+
+// parseRunwayCondition parses a runway condition string into a RunwayCondition struct
+func parseRunwayCondition(condStr string) RunwayCondition {
+	// Create a RunwayCondition with the raw string
+	cond := RunwayCondition{Raw: condStr}
+
+	// First check for CLRD (cleared) format
+	if runwayClearedRegex.MatchString(condStr) {
+		matches := runwayClearedRegex.FindStringSubmatch(condStr)
+		if matches == nil || len(matches) < 3 {
+			return cond
+		}
+
+		cond.Runway = matches[1]
+		cond.Cleared = true
+		clearedTime, _ := strconv.Atoi(matches[2])
+		cond.ClearedTime = clearedTime
+		return cond
+	}
+
+	// Then try the standard format
+	matches := runwayCondRegex.FindStringSubmatch(condStr)
+	// Needs at least runway and visibility value
+	if matches == nil || len(matches) < 4 {
+		return cond
+	}
+
+	// Extract runway identifier
+	cond.Runway = matches[1]
+
+	// Extract visibility and prefix
+	visStr := matches[3]
+	if len(visStr) > 0 {
+		// Check for prefix (P for more than, M for less than)
+		if visStr[0] == 'P' {
+			cond.Prefix = "P"
+			visStr = visStr[1:]
+		} else if visStr[0] == 'M' {
+			cond.Prefix = "M"
+			visStr = visStr[1:]
+		}
+
+		// Parse visibility value
+		vis, _ := strconv.Atoi(visStr)
+		cond.Visibility = vis
+	}
+
+	// Check for variable visibility
+	if matches[4] != "" {
+		varVisStr := matches[5]
+
+		// Handle prefixes in variable part
+		if len(varVisStr) > 0 && (varVisStr[0] == 'P' || varVisStr[0] == 'M') {
+			// Just remove the prefix for max visibility
+			varVisStr = varVisStr[1:]
+		}
+
+		// Store min and max values
+		cond.VisMin = cond.Visibility
+		visMax, _ := strconv.Atoi(varVisStr)
+		cond.VisMax = visMax
+	}
+
+	// Check for unit (FT for feet or nothing for meters)
+	if matches[6] == "FT" {
+		cond.Unit = "FT"
+	}
+
+	// Parse trend indicator
+	if len(matches) > 7 && matches[7] != "" {
+		// Extract the trend from either the full match or just the character
+		if strings.HasPrefix(matches[7], "/") {
+			// Format with slash: R21/1800V2000/U
+			cond.Trend = matches[7][1:]
+		} else {
+			// Format without slash: R21/1800V2000U
+			cond.Trend = matches[7]
+		}
+	}
+
+	return cond
 }
 
 // parseForecastElement parses a single element of a forecast
