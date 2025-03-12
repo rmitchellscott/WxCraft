@@ -160,7 +160,7 @@ func main() {
 		if !*metarOnly {
 			// Add a line break if we also displayed METAR
 			if !*tafOnly {
-				fmt.Println("\n----------------------------------\n")
+				fmt.Print("\n----------------------------------\n\n")
 			}
 
 			// Fetch and process TAF from the web
