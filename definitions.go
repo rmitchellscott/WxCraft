@@ -139,7 +139,7 @@ var forecastTypes = map[string]string{
 var (
 	timeRegex     = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})Z$`)
 	windRegex     = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
-	visRegexM     = regexp.MustCompile(`^(\d+(?:/\d+)?|M)SM$`)
+	visRegexM     = regexp.MustCompile(`^M?(\d+(?:/\d+)?)SM$`)
 	visRegexP     = regexp.MustCompile(`^(\d+(?:/\d+)?|M|P)(\d+)SM$`)
 	cloudRegex    = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC)(\d{3})?(CB|TCU)?$`)
 	tempRegex     = regexp.MustCompile(`^(M?)(\d{2})/(M?)(\d{2})$`)
