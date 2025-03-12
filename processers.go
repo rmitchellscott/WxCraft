@@ -54,6 +54,21 @@ func processRemarks(remarkParts []string) []Remark {
 	for i < len(remarkParts) {
 		part := remarkParts[i]
 
+		// Handle altimeter setting in remarks (format A2994)
+		if pressureRegex.MatchString(part) {
+			matches := pressureRegex.FindStringSubmatch(part)
+			pressureStr := matches[1]
+			pressureInt, _ := strconv.Atoi(pressureStr)
+			pressure := float64(pressureInt) / 100.0
+
+			remarks = append(remarks, Remark{
+				Raw:         part,
+				Description: fmt.Sprintf("altimeter setting %.2f inHg", pressure),
+			})
+			i++
+			continue
+		}
+
 		// Handle peak wind
 		if strings.HasPrefix(part, "PK") && i+2 < len(remarkParts) {
 			windRegex := regexp.MustCompile(`^PK\s+WND\s+(\d{3})(\d{2,3})/(\d{2})(\d{2})$`)

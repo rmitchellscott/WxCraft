@@ -253,11 +253,22 @@ func FormatMETAR(m METAR) string {
 	labelColor.Fprint(&sb, "Dew Point: ")
 	sb.WriteString(fmt.Sprintf("%d°C | %d°F\n", m.DewPoint, dewPointF))
 
-	// Pressure with millibar conversion
+	// Pressure with conversion to opposite unit
 	if m.Pressure > 0 {
-		pressureMb := InHgToMillibars(m.Pressure)
 		labelColor.Fprint(&sb, "Pressure: ")
-		sb.WriteString(fmt.Sprintf("%.2f inHg | %.1f mbar\n", m.Pressure, pressureMb))
+		if m.PressureUnit == "inHg" {
+			// Convert inHg to hPa/millibars
+			pressureHpa := InHgToMillibars(m.Pressure)
+			sb.WriteString(fmt.Sprintf("%.2f inHg | %.1f hPa\n", m.Pressure, pressureHpa))
+		} else if m.PressureUnit == "hPa" {
+			// Convert hPa/millibars to inHg
+			pressureInHg := m.Pressure / 33.8639
+			sb.WriteString(fmt.Sprintf("%.1f hPa | %.2f inHg\n", m.Pressure, pressureInHg))
+		} else {
+			// If no unit is specified, default to inHg with hPa conversion
+			pressureHpa := InHgToMillibars(m.Pressure)
+			sb.WriteString(fmt.Sprintf("%.2f inHg | %.1f hPa\n", m.Pressure, pressureHpa))
+		}
 	}
 
 	// Remarks

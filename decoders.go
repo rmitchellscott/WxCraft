@@ -371,12 +371,26 @@ func DecodeMETAR(raw string) METAR {
 			continue
 		}
 
-		// Pressure
-		if pressureRegex.MatchString(part) {
+		// Pressure in Q format (hPa/millibars) - only process if we haven't found pressure yet
+		if !pressureFound && len(part) > 1 && part[0] == 'Q' {
+			pressureStr := part[1:]
+			pressureInt, err := strconv.Atoi(pressureStr)
+			if err == nil {
+				m.Pressure = float64(pressureInt)
+				m.PressureUnit = "hPa"
+				pressureFound = true
+			}
+			continue
+		}
+
+		// Pressure in A format (inches of mercury) - only process if we haven't found pressure yet
+		if !pressureFound && pressureRegex.MatchString(part) {
 			matches := pressureRegex.FindStringSubmatch(part)
 			pressureStr := matches[1]
 			pressureInt, _ := strconv.Atoi(pressureStr)
 			m.Pressure = float64(pressureInt) / 100.0
+			m.PressureUnit = "inHg"
+			pressureFound = true
 			continue
 		}
 	}
