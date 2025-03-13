@@ -420,8 +420,8 @@ func DecodeMETAR(raw string) METAR {
 			continue
 		}
 
-		// Wind
-		if windRegex.MatchString(part) {
+		// Wind - check both KT and MPS formats
+		if windRegex.MatchString(part) || windRegexMPS.MatchString(part) {
 			m.Wind = parseWind(part)
 
 			// Check if the next token is a wind variation
