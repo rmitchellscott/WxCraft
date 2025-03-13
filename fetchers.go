@@ -105,6 +105,11 @@ func FetchSiteInfo(stationCode string) (SiteInfo, error) {
 	countryMatches := countryRegex.FindStringSubmatch(text)
 	if len(countryMatches) > 1 {
 		country = strings.TrimSpace(countryMatches[1])
+
+		// If we have a country code, convert it to the full name
+		if len(country) == 2 {
+			country = GetCountryName(country)
+		}
 	}
 
 	// If we couldn't extract site name, return an error (state/country optional)
