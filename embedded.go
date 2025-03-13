@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"log"
 )
 
 //go:embed assets/stations.json
@@ -49,10 +50,15 @@ func LoadEmbeddedStationInfo(stationCode string) (SiteInfo, error) {
 	// Look up the station by its ICAO code
 	for _, station := range stations {
 		if station.ICAOId == stationCode {
+			countryCode := station.Country
+			countryName := GetCountryName(countryCode)
+
+			log.Printf("Country code for %s: %s -> %s", stationCode, countryCode, countryName)
+
 			return SiteInfo{
 				Name:    station.Site,
 				State:   station.State,
-				Country: station.Country,
+				Country: countryName, // Use the full country name
 			}, nil
 		}
 	}
