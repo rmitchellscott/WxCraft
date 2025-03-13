@@ -126,7 +126,7 @@ func formatWind(wind Wind) string {
 	windStr := ""
 	if wind.Direction == "VRB" {
 		windStr += "Variable"
-	} else if wind.Direction != "" && wind.Direction == "0" {
+	} else if wind.Direction != "" && wind.Direction != "0" {
 		windStr += fmt.Sprintf("From %s°", wind.Direction)
 	}
 
