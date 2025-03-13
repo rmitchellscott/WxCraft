@@ -151,8 +151,8 @@ var forecastTypes = map[string]string{
 // Commonly used regular expressions
 var (
 	timeRegex         = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})Z$`)
-	windRegex         = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
-	windRegexMPS      = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?MPS$`)
+	windRegex         = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$|^(0+)(G\d{2})?KT$`)
+	windRegexMPS      = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?MPS$|^(0+)(G\d{2})?MPS$`)
 	windVarRegex      = regexp.MustCompile(`^(\d{3})V(\d{3})$`)
 	windShearAltRegex = regexp.MustCompile(`^WS(\d{3})/(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
 	windShearRwyRegex = regexp.MustCompile(`^WS(\s+(TKOF|LDG|ALL)\s+RWY(\d{2}[LCR]?)?|\s+R(\d{2}[LCR]?)?)$`)
@@ -190,7 +190,7 @@ type WeatherData struct {
 // Wind represents wind information in a weather report
 type Wind struct {
 	Direction string
-	Speed     int
+	Speed     *int
 	Gust      int
 	Unit      string
 }
@@ -272,8 +272,8 @@ type Forecast struct {
 	Visibility  string
 	Weather     []string
 	Clouds      []Cloud
-	VertVis     int       // Vertical visibility in hundreds of feet
-	Raw         string    // Raw text for this forecast period
+	VertVis     int    // Vertical visibility in hundreds of feet
+	Raw         string // Raw text for this forecast period
 }
 
 // TAF represents a decoded Terminal Aerodrome Forecast

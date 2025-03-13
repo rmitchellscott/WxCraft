@@ -5,6 +5,7 @@ go 1.24.1
 require (
 	github.com/fatih/color v1.18.0
 	github.com/stretchr/testify v1.10.0
+	k8s.io/utils v0.0.0-20241210054802-24370beab758
 )
 
 require (

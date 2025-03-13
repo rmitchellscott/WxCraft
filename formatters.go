@@ -115,14 +115,18 @@ func formatVisibility(visibility string) string {
 
 // formatWind converts a Wind struct to a human-readable string
 func formatWind(wind Wind) string {
-	if wind.Speed == 0 && wind.Direction == "" {
+	// if wind.Speed == 0 && wind.Direction == "" {
+	// 	return ""
+	// }
+
+	if wind.Speed == nil && wind.Gust == 0 {
 		return ""
 	}
 
 	windStr := ""
 	if wind.Direction == "VRB" {
 		windStr += "Variable"
-	} else if wind.Direction != "" {
+	} else if wind.Direction != "" && wind.Direction == "0" {
 		windStr += fmt.Sprintf("From %s°", wind.Direction)
 	}
 
@@ -131,8 +135,13 @@ func formatWind(wind Wind) string {
 		unitLabel = "meters per second"
 	}
 
-	if wind.Speed > 0 {
-		windStr += fmt.Sprintf(" at %d %s", wind.Speed, unitLabel)
+	if wind.Speed != nil && *wind.Speed > 0 {
+		windStr += fmt.Sprintf(" at %d %s", *wind.Speed, unitLabel)
+		if wind.Gust > 0 {
+			windStr += fmt.Sprintf(", gusting to %d %s", wind.Gust, unitLabel)
+		}
+	} else {
+		windStr += fmt.Sprintf(" %d %s", *wind.Speed, unitLabel)
 		if wind.Gust > 0 {
 			windStr += fmt.Sprintf(", gusting to %d %s", wind.Gust, unitLabel)
 		}
@@ -271,12 +280,13 @@ func FormatMETAR(m METAR) string {
 			// Split the variation at the 'V' character
 			parts := strings.Split(m.WindVariation, "V")
 			if len(parts) == 2 {
-				sb.WriteString(fmt.Sprintf(" (varying between %s° and %s°)\n", parts[0], parts[1]))
+				sb.WriteString(fmt.Sprintf(" (varying between %s° and %s°)", parts[0], parts[1]))
 			} else {
 				// Fallback in case the format is unexpected
 				sb.WriteString(" (varying between " + m.WindVariation + ")")
 			}
 		}
+		sb.WriteString("\n")
 	}
 
 	// Visibility
