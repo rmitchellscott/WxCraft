@@ -238,8 +238,8 @@ func parseRunwayCondition(condStr string) RunwayCondition {
 
 // parseForecastElement parses a single element of a forecast
 func parseForecastElement(forecast *Forecast, part string) {
-	// Wind
-	if windRegex.MatchString(part) {
+	// Wind - check both KT and MPS formats
+	if windRegex.MatchString(part) || windRegexMPS.MatchString(part) {
 		forecast.Wind = parseWind(part)
 		return
 	}
