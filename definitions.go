@@ -89,6 +89,8 @@ var weatherDescriptions = map[string]string{
 	"DZ":   "drizzle",
 	"-DZ":  "light drizzle",
 	"+DZ":  "heavy drizzle",
+	"HZ":   "haze",
+	"VCHZ": "haze in vicinity",
 
 	// Composite codes - showers
 	"-SHRA": "light rain showers",
