@@ -11,6 +11,7 @@ var weatherCodes = map[string]WeatherCode{
 	"VC":  {Description: "in the vicinity", Position: 3},
 	"+":   {Description: "heavy", Position: 0},
 	"-":   {Description: "light", Position: 0},
+	"RE":  {Description: "recent", Position: 0},
 	"MI":  {Description: "shallow", Position: 0},
 	"PR":  {Description: "partial", Position: 0},
 	"BC":  {Description: "patches", Position: 0},
@@ -95,7 +96,7 @@ var (
 	visRegexNum       = regexp.MustCompile(`^\d{4}$`)
 	visRegexDir       = regexp.MustCompile(`^(\d{4})([NESW]{1,2})$`)
 	cloudRegex        = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC)(\d{3})?(CB|TCU)?$`)
-	tempRegex         = regexp.MustCompile(`^(M?)(\d{2})/(M?)(\d{2})$`)
+	tempRegex         = regexp.MustCompile(`^(M?)(\d{1,2})/(M?)(\d{1,2})$`)
 	tempOnlyRegex     = regexp.MustCompile(`^(M?)(\d{2})/$`)
 	pressureRegex     = regexp.MustCompile(`^A(\d{4})$`)
 	validRegex        = regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
