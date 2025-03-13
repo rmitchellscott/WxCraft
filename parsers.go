@@ -2,9 +2,12 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"k8s.io/utils/ptr"
 )
 
 // parseTime parses a time string in the format "DDHHMM"Z
@@ -32,15 +35,36 @@ func parseTime(timeStr string) (time.Time, error) {
 
 // parseWind parses a wind string in the format "DDDSSKT", "DDDSSGGKT", "DDDSSMPS", or "DDDSSGGMPS"
 func parseWind(windStr string) Wind {
-	// Try to match KT format first
+	// Check for special cases where wind speed consists of zeros
+	zeroKTRegex := regexp.MustCompile(`^(VRB|\d{3})(0+)KT$`)
+	zeroMPSRegex := regexp.MustCompile(`^(VRB|\d{3})(0+)MPS$`)
+
+	// Handle zero wind speed cases
+	if matches := zeroKTRegex.FindStringSubmatch(windStr); matches != nil {
+		return Wind{
+			Direction: matches[1],
+			Speed:     ptr.To(0),
+			Unit:      "KT",
+		}
+	}
+
+	if matches := zeroMPSRegex.FindStringSubmatch(windStr); matches != nil {
+		return Wind{
+			Direction: matches[1],
+			Speed:     ptr.To(0),
+			Unit:      "MPS",
+		}
+	}
+
+	// Try to match KT format
 	matches := windRegex.FindStringSubmatch(windStr)
 	if matches != nil {
 		wind := Wind{
 			Direction: matches[1],
 			Unit:      "KT",
 		}
-
-		wind.Speed, _ = strconv.Atoi(matches[2])
+		speed, _ := strconv.Atoi(matches[2])
+		wind.Speed = &speed
 		if matches[4] != "" {
 			wind.Gust, _ = strconv.Atoi(matches[4])
 		}
@@ -56,7 +80,8 @@ func parseWind(windStr string) Wind {
 			Unit:      "MPS",
 		}
 
-		wind.Speed, _ = strconv.Atoi(matches[2])
+		speed, _ := strconv.Atoi(matches[2])
+		wind.Speed = &speed
 		if matches[4] != "" {
 			wind.Gust, _ = strconv.Atoi(matches[4])
 		}
@@ -140,7 +165,7 @@ func parseWindShear(wsStr string) WindShear {
 			Unit:      "KT",
 		}
 		speed, _ := strconv.Atoi(matches[3])
-		wind.Speed = speed
+		wind.Speed = &speed
 
 		if matches[5] != "" {
 			gust, _ := strconv.Atoi(matches[5])
