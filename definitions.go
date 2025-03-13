@@ -183,8 +183,8 @@ type METAR struct {
 	Visibility       string
 	Weather          []string
 	Clouds           []Cloud
-	VertVis          int // Vertical visibility in hundreds of feet
-	Temperature      int
+	VertVis          int  // Vertical visibility in hundreds of feet
+	Temperature      *int // Changed to pointer to represent missing value
 	DewPoint         *int // Using pointer to represent missing dew point
 	Pressure         float64
 	PressureUnit     string // "hPa" or "inHg"

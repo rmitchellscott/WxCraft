@@ -517,10 +517,16 @@ func TestDecodeMETAR_temperature(t *testing.T) {
 					expectedDew = -expectedDew
 				}
 
-				if expectedTemp != metar.Temperature {
+				// Check if temperature is not nil before comparing
+				if metar.Temperature == nil {
+					t.Run(line, func(t *testing.T) {
+						t.Errorf("Raw METAR: %s\nTemperature is nil but expected: %d\n\n",
+							line, expectedTemp)
+					})
+				} else if expectedTemp != *metar.Temperature {
 					t.Run(line, func(t *testing.T) {
 						t.Errorf("Raw METAR: %s\nTemperature mismatch - Expected: %d, Got: %d\n",
-							line, expectedTemp, metar.Temperature)
+							line, expectedTemp, *metar.Temperature)
 					})
 				}
 

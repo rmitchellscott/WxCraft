@@ -514,7 +514,8 @@ func DecodeMETAR(raw string) METAR {
 			if matches[1] == "M" {
 				temp = -temp
 			}
-			m.Temperature = temp
+			// Store temperature as a pointer to int
+			m.Temperature = &temp
 
 			dewPoint, _ := strconv.Atoi(matches[4])
 			if matches[3] == "M" {
@@ -532,11 +533,11 @@ func DecodeMETAR(raw string) METAR {
 			if matches[1] == "M" {
 				temp = -temp
 			}
-			m.Temperature = temp
+			// Store temperature as a pointer to int
+			m.Temperature = &temp
 			// Leave DewPoint as nil to indicate missing value
 			continue
 		}
-
 		// Pressure in Q format (hPa/millibars) - only process if we haven't found pressure yet
 		if len(part) > 1 && part[0] == 'Q' {
 			if pressureFound {

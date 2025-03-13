@@ -506,9 +506,15 @@ func FormatMETAR(m METAR) string {
 	}
 
 	// Temperature with Fahrenheit conversion
-	tempF := CelsiusToFahrenheit(m.Temperature)
-	labelColor.Fprint(&sb, "Temperature: ")
-	sb.WriteString(fmt.Sprintf("%d°C | %d°F\n", m.Temperature, tempF))
+	if m.Temperature == nil {
+		// Case for missing temperature
+		labelColor.Fprint(&sb, "Temperature: ")
+		sb.WriteString("Not available\n")
+	} else {
+		tempF := CelsiusToFahrenheit(*m.Temperature)
+		labelColor.Fprint(&sb, "Temperature: ")
+		sb.WriteString(fmt.Sprintf("%d°C | %d°F\n", *m.Temperature, tempF))
+	}
 
 	// Dew point with Fahrenheit conversion
 	if m.DewPoint == nil {
