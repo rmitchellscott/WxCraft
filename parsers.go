@@ -74,7 +74,9 @@ func parseWindVariation(varStr string) string {
 		return ""
 	}
 
-	return varStr // Return the original string as is
+	// The regex already ensures these are valid directional values
+	// No need to perform additional validation, return the formatted string
+	return varStr
 }
 
 // parseCloud parses a cloud string in the format "CCCHHH" or "CCCHHHTTT"
@@ -241,7 +243,6 @@ func parseForecastElement(forecast *Forecast, part string) {
 		forecast.Wind = parseWind(part)
 		return
 	}
-
 	// Wind shear
 	if strings.HasPrefix(part, "WS") {
 		ws := parseWindShear(part)
@@ -254,13 +255,13 @@ func parseForecastElement(forecast *Forecast, part string) {
 		forecast.Visibility = part
 		return
 	}
-	
+
 	// Visibility in meters
 	if isVisibilityInMeters(part) {
 		forecast.Visibility = part
 		return
 	}
-	
+
 	// Vertical visibility (VV)
 	if isVerticalVisibility(part) {
 		// Extract the height value
@@ -283,12 +284,12 @@ func parseForecastElement(forecast *Forecast, part string) {
 	// Weather phenomena - check for weather codes, but not if it looks like a cloud code
 	if isWeatherCode(part) {
 		// Additional check to avoid misclassifying cloud patterns as weather codes
-		if !strings.HasPrefix(part, "SKC") && 
-		   !strings.HasPrefix(part, "CLR") && 
-		   !strings.HasPrefix(part, "FEW") && 
-		   !strings.HasPrefix(part, "SCT") && 
-		   !strings.HasPrefix(part, "BKN") && 
-		   !strings.HasPrefix(part, "OVC") {
+		if !strings.HasPrefix(part, "SKC") &&
+			!strings.HasPrefix(part, "CLR") &&
+			!strings.HasPrefix(part, "FEW") &&
+			!strings.HasPrefix(part, "SCT") &&
+			!strings.HasPrefix(part, "BKN") &&
+			!strings.HasPrefix(part, "OVC") {
 			forecast.Weather = append(forecast.Weather, part)
 			return
 		}

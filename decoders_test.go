@@ -123,7 +123,61 @@ func TestDecodeMETAR_remarks(t *testing.T) {
 		assert.Zero(t, failedValueCount)
 	})
 }
+func TestDecodeMETAR_weatherCode(t *testing.T) {
+	t.Parallel()
 
+	for line, metar := range decodeMETARList(t) {
+		fields := strings.Fields(line)
+
+		// Find sections to know where to stop
+		rmkIndex := -1
+		sectionIndices := []int{}
+
+		// Find all TEMPO, BECMG, and RMK sections
+		for i, part := range fields {
+			if part == "RMK" {
+				rmkIndex = i
+				break // RMK always ends the main section
+			}
+			if part == "TEMPO" || part == "BECMG" || part == "INTER" {
+				sectionIndices = append(sectionIndices, i)
+			}
+		}
+
+		// Find the first section marker
+		endIndex := len(fields)
+		if rmkIndex != -1 {
+			endIndex = rmkIndex
+		}
+
+		// Find the earliest TEMPO or BECMG section
+		for _, idx := range sectionIndices {
+			if idx < endIndex {
+				endIndex = idx
+			}
+		}
+
+		// Collect weather codes from original METAR
+		var expectedWeatherCodes []string
+		for i := 2; i < endIndex; i++ {
+			if isWeatherCode(fields[i]) {
+				expectedWeatherCodes = append(expectedWeatherCodes, fields[i])
+			}
+		}
+		// Filter out WS which is handled separately as wind shear
+		expectedWeatherCodes = slices.DeleteFunc(expectedWeatherCodes, func(s string) bool {
+			return s == "WS"
+		})
+
+		// Compare with decoded weather codes
+		if !slices.Equal(expectedWeatherCodes, metar.Weather) {
+			t.Run(line, func(t *testing.T) {
+				t.Errorf("Raw METAR: %s\nExpected weather codes: %v\nActual weather codes: %v\n\n",
+					line, expectedWeatherCodes, metar.Weather)
+			})
+		}
+	}
+}
 func TestDecodeMETAR_visibility(t *testing.T) {
 	t.Parallel()
 
@@ -152,6 +206,63 @@ func TestDecodeMETAR_visibility(t *testing.T) {
 				t.Errorf("Raw METAR: %s\nExpected visibility: %s\nActual visibility: %s\n\n",
 					line, expectedVisibility, metar.Visibility)
 			})
+		}
+	}
+}
+func TestDecodeMETAR_verticalVisibility(t *testing.T) {
+	t.Parallel()
+
+	for line, metar := range decodeMETARList(t) {
+		fields := strings.Fields(line)
+
+		// Find sections to know where to stop
+		rmkIndex := -1
+		sectionIndices := []int{}
+
+		// Find all TEMPO, BECMG, and RMK sections
+		for i, part := range fields {
+			if part == "RMK" {
+				rmkIndex = i
+				break // RMK always ends the main section
+			}
+			if part == "TEMPO" || part == "BECMG" || part == "INTER" {
+				sectionIndices = append(sectionIndices, i)
+			}
+		}
+
+		// Find the first section marker
+		endIndex := len(fields)
+		if rmkIndex != -1 {
+			endIndex = rmkIndex
+		}
+
+		// Find the earliest TEMPO or BECMG section
+		for _, idx := range sectionIndices {
+			if idx < endIndex {
+				endIndex = idx
+			}
+		}
+
+		// Find vertical visibility in the original METAR
+		var expectedVertVis int
+		for i := 2; i < endIndex; i++ {
+			if isVerticalVisibility(fields[i]) {
+				matches := vvRegex.FindStringSubmatch(fields[i])
+				if len(matches) > 1 {
+					expectedVertVis, _ = strconv.Atoi(matches[1])
+					break
+				}
+			}
+		}
+
+		// Only test if vertical visibility was found in the original METAR
+		if expectedVertVis > 0 || metar.VertVis > 0 {
+			if expectedVertVis != metar.VertVis {
+				t.Run(line, func(t *testing.T) {
+					t.Errorf("Raw METAR: %s\nExpected vertical visibility: %d00ft\nActual vertical visibility: %d00ft\n\n",
+						line, expectedVertVis, metar.VertVis)
+				})
+			}
 		}
 	}
 }
@@ -322,19 +433,6 @@ func TestDecodeMETAR_weather(t *testing.T) {
 			})
 		}
 	}
-
-	// if len(failures) > 0 {
-	// 	// Create log content
-	// 	logContent := "WEATHER PHENOMENA PARSING FAILURES IN METAR\n"
-	// 	logContent += "========================================\n\n"
-	// 	logContent += strings.Join(failures, "")
-
-	// 	// Write to log file
-	// 	logFile := logTestFailures(t, "weather_parsing_failures", logContent)
-
-	// 	t.Errorf("Found %d weather phenomena parsing failures in METAR. See '%s' for details.",
-	// 		len(failures), logFile)
-	// }
 }
 func TestDecodeMETAR_clouds(t *testing.T) {
 	t.Parallel()

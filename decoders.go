@@ -269,6 +269,56 @@ func DecodeTAF(raw string) TAF {
 	return t
 }
 
+// isWeatherCode checks if a string contains any weather codes
+func isWeatherCode(s string) bool {
+	// Don't match cloud patterns as weather
+	if strings.HasPrefix(s, "SKC") ||
+		strings.HasPrefix(s, "CLR") ||
+		strings.HasPrefix(s, "FEW") ||
+		strings.HasPrefix(s, "SCT") ||
+		strings.HasPrefix(s, "BKN") ||
+		strings.HasPrefix(s, "OVC") {
+		return false
+	}
+
+	for code := range weatherCodes {
+		if strings.Contains(s, code) {
+			return true
+		}
+	}
+	return false
+}
+
+// isVisibilityInMeters checks if a string is a visibility value in meters
+func isVisibilityInMeters(s string) bool {
+	// Basic check for 4-digit number (standard visibility in meters)
+	if visRegexNum.MatchString(s) {
+		return true
+	}
+
+	// Check for visibility with direction (e.g., "2000NE")
+	if visRegexDir.MatchString(s) {
+		return true
+	}
+
+	// Check for visibility with No Directional Variation (e.g., "4000NDV")
+	if ndvRegex.MatchString(s) {
+		return true
+	}
+
+	// Special case for visibility less than 50m reported as "0000"
+	if s == "0000" {
+		return true
+	}
+
+	return false
+}
+
+// isVerticalVisibility checks if a string is a vertical visibility value
+func isVerticalVisibility(s string) bool {
+	return vvRegex.MatchString(s)
+}
+
 // DecodeMETAR decodes a raw METAR string into a METAR struct with site information
 func DecodeMETAR(raw string) METAR {
 	m := METAR{WeatherData: WeatherData{Raw: raw}}
@@ -373,9 +423,15 @@ func DecodeMETAR(raw string) METAR {
 		// Wind
 		if windRegex.MatchString(part) {
 			m.Wind = parseWind(part)
+
+			// Check if the next token is a wind variation
+			if i+1 < endIndex && windVarRegex.MatchString(parts[i+1]) {
+				m.WindVariation = parseWindVariation(parts[i+1])
+				i++ // Skip the next token since we've processed it
+			}
+
 			continue
 		}
-
 		// Check for wind shear
 		if strings.HasPrefix(part, "WS") {
 			ws := parseWindShear(part)

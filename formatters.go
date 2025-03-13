@@ -61,7 +61,7 @@ func formatVisibility(visibility string) string {
 		meters := visibility[:len(visibility)-1]
 		return meters + " meters"
 	}
-	
+
 	// Handle standard 4-digit meter visibility format (e.g. "5000" for 5000 meters)
 	if visRegexNum.MatchString(visibility) {
 		meters, _ := strconv.Atoi(visibility)
@@ -81,15 +81,35 @@ func formatVisibility(visibility string) string {
 	if matches != nil {
 		meters := matches[1]
 		direction := matches[2]
-		
+
 		// Special case for 9999 which means unlimited visibility
 		if meters == "9999" {
 			return "Unlimited visibility in the " + direction + " direction"
 		}
-		
+
 		return meters + " meters in the " + direction + " direction"
 	}
+	// Handle visibility with NDV (No Directional Variation)
+	if ndvRegex.MatchString(visibility) {
+		matches := ndvRegex.FindStringSubmatch(visibility)
+		if len(matches) > 1 {
+			visValue := matches[1]
+			meters, _ := strconv.Atoi(visValue)
 
+			// Special case for 0000 - less than 50 meters
+			if meters == 0 {
+				return "Less than 50 meters in all directions"
+			}
+
+			// Special case for 9999 - unlimited visibility
+			if meters == 9999 {
+				return "Unlimited visibility in all directions"
+			}
+
+			return fmt.Sprintf("%s meters in all directions",
+				formatNumberWithCommas(meters))
+		}
+	}
 	return visibility
 }
 
@@ -248,10 +268,15 @@ func FormatMETAR(m METAR) string {
 
 		// Add wind variation if available
 		if m.WindVariation != "" {
-			sb.WriteString(" (varying between " + m.WindVariation + ")")
+			// Split the variation at the 'V' character
+			parts := strings.Split(m.WindVariation, "V")
+			if len(parts) == 2 {
+				sb.WriteString(fmt.Sprintf(" (varying between %s° and %s°)\n", parts[0], parts[1]))
+			} else {
+				// Fallback in case the format is unexpected
+				sb.WriteString(" (varying between " + m.WindVariation + ")")
+			}
 		}
-
-		sb.WriteString("\n")
 	}
 
 	// Visibility
@@ -260,8 +285,8 @@ func FormatMETAR(m METAR) string {
 		labelColor.Fprint(&sb, "Visibility: ")
 		sb.WriteString(visibilityDesc + "\n")
 	}
-	
-	// Vertical visibility - show if available 
+
+	// Vertical visibility - show if available
 	if m.VertVis > 0 {
 		labelColor.Fprint(&sb, "Vertical Visibility: ")
 		sb.WriteString(fmt.Sprintf("%s feet\n", formatNumberWithCommas(m.VertVis*100)))
@@ -645,7 +670,7 @@ func FormatTAF(t TAF) string {
 			labelColor.Fprint(&sb, "Visibility: ")
 			sb.WriteString(visibilityDesc + "\n")
 		}
-		
+
 		// Vertical visibility
 		if forecast.VertVis > 0 {
 			sb.WriteString("   ")
