@@ -6,41 +6,42 @@ import (
 )
 
 // Common weather phenomena mapping used across the application
-var weatherCodes = map[string]string{
-	"WS": "wind shear",
-	"VC": "vicinity",
-	"+":  "heavy",
-	"-":  "light",
-	"MI": "shallow",
-	"PR": "partial",
-	"BC": "patches",
-	"DR": "low drifting",
-	"BL": "blowing",
-	"SH": "shower",
-	"TS": "thunderstorm",
-	"FZ": "freezing",
-	"DZ": "drizzle",
-	"RA": "rain",
-	"SN": "snow",
-	"SG": "snow grains",
-	"IC": "ice crystals",
-	"PL": "ice pellets",
-	"GR": "hail",
-	"GS": "small hail",
-	"UP": "unknown precipitation",
-	"BR": "mist",
-	"FG": "fog",
-	"FU": "smoke",
-	"VA": "volcanic ash",
-	"DU": "widespread dust",
-	"SA": "sand",
-	"HZ": "haze",
-	"PY": "spray",
-	"PO": "dust whirls",
-	"SQ": "squalls",
-	"FC": "funnel cloud",
-	"SS": "sandstorm",
-	"DS": "duststorm",
+var weatherCodes = map[string]WeatherCode{
+	"WS":  {Description: "wind shear", Position: 1},
+	"VC":  {Description: "in the vicinity", Position: 3},
+	"+":   {Description: "heavy", Position: 0},
+	"-":   {Description: "light", Position: 0},
+	"MI":  {Description: "shallow", Position: 0},
+	"PR":  {Description: "partial", Position: 0},
+	"BC":  {Description: "patches", Position: 0},
+	"DR":  {Description: "low drifting", Position: 0},
+	"BL":  {Description: "blowing", Position: 0},
+	"SH":  {Description: "showers", Position: 2},
+	"TS":  {Description: "thunderstorm", Position: 1},
+	"FZ":  {Description: "freezing", Position: 0},
+	"DZ":  {Description: "drizzle", Position: 1},
+	"RA":  {Description: "rain", Position: 1},
+	"SN":  {Description: "snow", Position: 1},
+	"SG":  {Description: "snow grains", Position: 1},
+	"IC":  {Description: "ice crystals", Position: 1},
+	"PL":  {Description: "ice pellets", Position: 1},
+	"GR":  {Description: "hail", Position: 1},
+	"GS":  {Description: "small hail", Position: 1},
+	"UP":  {Description: "unknown precipitation", Position: 1},
+	"BR":  {Description: "mist", Position: 1},
+	"FG":  {Description: "fog", Position: 1},
+	"FU":  {Description: "smoke", Position: 1},
+	"VA":  {Description: "volcanic ash", Position: 1},
+	"DU":  {Description: "widespread dust", Position: 1},
+	"SA":  {Description: "sand", Position: 1},
+	"HZ":  {Description: "haze", Position: 1},
+	"PY":  {Description: "spray", Position: 1},
+	"PO":  {Description: "dust whirls", Position: 1},
+	"SQ":  {Description: "squalls", Position: 1},
+	"FC":  {Description: "funnel cloud", Position: 1},
+	"+FC": {Description: "tornado/waterspout", Position: 1},
+	"SS":  {Description: "sandstorm", Position: 1},
+	"DS":  {Description: "duststorm", Position: 1},
 }
 
 // Common cloud coverage mapping
@@ -69,75 +70,6 @@ var specialConditions = map[string]string{
 	"NCD":   "no clouds detected",
 	"CAVOK": "ceiling and visibility OK",
 	"RTD":   "routine delayed (late) observation",
-}
-
-// Common weather description mapping for simplified display
-var weatherDescriptions = map[string]string{
-	// Basic codes
-	"BR":   "mist",
-	"FG":   "fog",
-	"-RA":  "light rain",
-	"RA":   "rain",
-	"+RA":  "heavy rain",
-	"-SN":  "light snow",
-	"SN":   "snow",
-	"+SN":  "heavy snow",
-	"VCSH": "showers in vicinity",
-	"VCTS": "thunderstorm in vicinity",
-	"TS":   "thunderstorm",
-	"TSRA": "thunderstorm with rain",
-	"DZ":   "drizzle",
-	"-DZ":  "light drizzle",
-	"+DZ":  "heavy drizzle",
-	"HZ":   "haze",
-	"VCHZ": "haze in vicinity",
-
-	// Composite codes - showers
-	"-SHRA": "light rain showers",
-	"SHRA":  "rain showers",
-	"+SHRA": "heavy rain showers",
-	"-SHSN": "light snow showers",
-	"SHSN":  "snow showers",
-	"+SHSN": "heavy snow showers",
-	"SHGR":  "hail showers",
-	"-SHGR": "light hail showers",
-	"+SHGR": "heavy hail showers",
-
-	// Thunderstorms
-	"+TS":   "heavy thunderstorm",
-	"-TS":   "light thunderstorm",
-	"-TSRA": "light thunderstorm with rain",
-	"+TSRA": "heavy thunderstorm with rain",
-	"TSSN":  "thunderstorm with snow",
-	"-TSSN": "light thunderstorm with snow",
-	"+TSSN": "heavy thunderstorm with snow",
-	"TSGR":  "thunderstorm with hail",
-	"+TSGR": "heavy thunderstorm with hail",
-
-	// Freezing precipitation
-	"FZRA":  "freezing rain",
-	"-FZRA": "light freezing rain",
-	"+FZRA": "heavy freezing rain",
-	"FZDZ":  "freezing drizzle",
-	"-FZDZ": "light freezing drizzle",
-	"+FZDZ": "heavy freezing drizzle",
-
-	// Blowing and drifting
-	"BLSN": "blowing snow",
-	"DRSN": "drifting snow",
-	"BLDU": "blowing dust",
-	"BLSA": "blowing sand",
-
-	// Vicinity phenomena
-	"VCFG": "fog in vicinity",
-	"VCFC": "funnel cloud in vicinity",
-
-	// Other combinations
-	"MIFG": "shallow fog",
-	"BCFG": "patches of fog",
-	"PRFG": "partial fog",
-	"FC":   "funnel cloud",
-	"+FC":  "tornado/waterspout",
 }
 
 // TAF forecast types

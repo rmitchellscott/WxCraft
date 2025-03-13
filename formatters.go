@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -182,22 +183,172 @@ func formatClouds(clouds []Cloud) string {
 	return strings.Join(cloudStrs, ", ")
 }
 
-// formatWeather converts a slice of weather strings to a human-readable format
+// // formatWeather converts a slice of weather strings to a human-readable format
+// func formatWeather(weather []string) string {
+// 	if len(weather) == 0 {
+// 		return ""
+// 	}
+
+// 	var weatherStrs []string
+// 	for _, wx := range weather {
+// 		if desc, ok := weatherDescriptions[wx]; ok {
+// 			weatherStrs = append(weatherStrs, desc)
+// 		} else {
+// 			weatherStrs = append(weatherStrs, wx)
+// 		}
+// 	}
+
+//		return strings.Join(weatherStrs, ", ")
+//	}
+//
+// WeatherCode represents a weather code and its properties
+type WeatherCode struct {
+	Description string
+	Position    int
+}
+
+// formatWeather converts weather code strings into human-readable descriptions
 func formatWeather(weather []string) string {
 	if len(weather) == 0 {
 		return ""
 	}
 
-	var weatherStrs []string
-	for _, wx := range weather {
-		if desc, ok := weatherDescriptions[wx]; ok {
-			weatherStrs = append(weatherStrs, desc)
+	var formattedWeather []string
+
+	for _, wxCode := range weather {
+		// Split the weather code by spaces to handle multiple elements
+		elements := strings.Fields(wxCode)
+
+		if len(elements) == 1 {
+			// Single code with no spaces (like "VCHZ")
+			formattedWeather = append(formattedWeather, formatWeatherElement(wxCode))
 		} else {
-			weatherStrs = append(weatherStrs, wx)
+			// Multiple codes separated by spaces
+			var elementDescriptions []string
+
+			for _, element := range elements {
+				elementDescriptions = append(elementDescriptions, formatWeatherElement(element))
+			}
+
+			formattedWeather = append(formattedWeather, strings.Join(elementDescriptions, ", "))
 		}
 	}
 
-	return strings.Join(weatherStrs, ", ")
+	return strings.Join(formattedWeather, ", ")
+}
+
+// formatWeatherElement handles a single weather element, with or without combined codes
+func formatWeatherElement(code string) string {
+	// First check if this is a simple code we already know
+	if wc, ok := weatherCodes[code]; ok {
+		return wc.Description
+	}
+
+	// If not a simple code, try to break it down into components
+	type ParsedPart struct {
+		Description string
+		Position    int
+	}
+
+	var parts []ParsedPart
+	remainingCode := code
+
+	// Process the code by looking for known two-letter and one-letter codes
+	for len(remainingCode) > 0 {
+		found := false
+
+		// Try to match 2-letter codes first
+		if len(remainingCode) >= 2 {
+			twoLetters := remainingCode[:2]
+			if wc, ok := weatherCodes[twoLetters]; ok {
+				found = true
+				parts = append(parts, ParsedPart{
+					Description: wc.Description,
+					Position:    wc.Position,
+				})
+				remainingCode = remainingCode[2:]
+				continue
+			}
+		}
+
+		// If no 2-letter code matched, try 1-letter codes (like "+" or "-")
+		if len(remainingCode) >= 1 {
+			oneLetter := remainingCode[:1]
+			if wc, ok := weatherCodes[oneLetter]; ok {
+				found = true
+				parts = append(parts, ParsedPart{
+					Description: wc.Description,
+					Position:    wc.Position,
+				})
+				remainingCode = remainingCode[1:]
+				continue
+			}
+		}
+
+		// If we didn't find a match, we can't completely parse this code
+		if !found {
+			// If we parsed at least part of the code, add the remaining as a main phenomenon
+			if len(parts) > 0 {
+				parts = append(parts, ParsedPart{
+					Description: remainingCode,
+					Position:    1, // Treat unparsed remainder as main phenomenon
+				})
+			} else {
+				// If we couldn't parse anything, return the original code
+				return code
+			}
+			break
+		}
+	}
+
+	// If we parsed the whole code but didn't find any main phenomenon (position 1),
+	// promote the first modifier to main phenomenon if available
+	hasMainPhenomenon := false
+	for _, part := range parts {
+		if part.Position == 1 {
+			hasMainPhenomenon = true
+			break
+		}
+	}
+
+	if !hasMainPhenomenon && len(parts) > 0 {
+		// Look for modifiers to promote
+		for i, part := range parts {
+			if part.Position == 2 { // Modifier
+				parts[i].Position = 1 // Promote to main phenomenon
+				hasMainPhenomenon = true
+				break
+			}
+		}
+
+		// If still no main phenomenon, promote the last prefix
+		if !hasMainPhenomenon {
+			for i := len(parts) - 1; i >= 0; i-- {
+				if parts[i].Position == 0 { // Prefix
+					parts[i].Position = 1 // Promote to main phenomenon
+					break
+				}
+			}
+		}
+	}
+
+	// Sort parts by position
+	sort.Slice(parts, func(i, j int) bool {
+		return parts[i].Position < parts[j].Position
+	})
+
+	// Build the final description
+	var descriptions []string
+	for _, part := range parts {
+		descriptions = append(descriptions, part.Description)
+	}
+
+	// If we couldn't parse anything meaningful, return the original code
+	if len(descriptions) == 0 {
+		return code
+	}
+
+	return strings.Join(descriptions, " ")
 }
 
 // formatSpecialCodes converts special codes to human-readable format
