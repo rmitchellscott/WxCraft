@@ -38,12 +38,12 @@ func fetchData(urlTemplate string, stationCode string, dataType string) (string,
 
 // FetchMETAR fetches the raw METAR for a given station code
 func FetchMETAR(stationCode string) (string, error) {
-	return fetchData("https://aviationweather.gov/cgi-bin/data/metar.php?ids=%s", stationCode, "METAR")
+	return fetchData("https://aviationweather.gov/api/data/metar?ids=%s", stationCode, "METAR")
 }
 
 // FetchTAF fetches the raw TAF for a given station code
 func FetchTAF(stationCode string) (string, error) {
-	return fetchData("https://aviationweather.gov/cgi-bin/data/taf.php?ids=%s", stationCode, "TAF")
+	return fetchData("https://aviationweather.gov/api/data/taf?ids=%s", stationCode, "TAF")
 }
 
 // FetchSiteInfo fetches site information for a station from the Aviation Weather API
