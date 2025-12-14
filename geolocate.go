@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 )
 
 // Location represents geographic coordinates of the user
@@ -18,9 +20,9 @@ type Location struct {
 }
 
 // GetLocation uses a free IP geolocation service to get location information
-// Uses ip-api.com which is free for non-commercial use
+// Uses ipinfo.io which is free for non-commercial use
 func GetLocation() (*Location, error) {
-	resp, err := http.Get("http://ip-api.com/json/")
+	resp, err := http.Get("https://ipinfo.io/json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
@@ -35,31 +37,40 @@ func GetLocation() (*Location, error) {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Parse response from ip-api.com
+	// Parse response from ipinfo.io
 	var result struct {
-		Status      string  `json:"status"`
-		Lat         float64 `json:"lat"`
-		Lon         float64 `json:"lon"`
-		City        string  `json:"city"`
-		RegionName  string  `json:"regionName"`
-		CountryName string  `json:"country"`
-		Message     string  `json:"message"`
+		City    string `json:"city"`
+		Region  string `json:"region"`
+		Country string `json:"country"`
+		Loc     string `json:"loc"`
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
-	if result.Status != "success" {
-		return nil, fmt.Errorf("geolocation failed: %s", result.Message)
+	// Parse lat/lon from "loc" string (e.g., "XX.XXXX,-YY.YYYY")
+	latStr, lonStr, found := strings.Cut(result.Loc, ",")
+	if !found {
+		return nil, fmt.Errorf("invalid loc format: %s", result.Loc)
+	}
+
+	lat, err := strconv.ParseFloat(latStr, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid latitude: %s", latStr)
+	}
+
+	lon, err := strconv.ParseFloat(lonStr, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid longitude: %s", lonStr)
 	}
 
 	return &Location{
-		Latitude:  result.Lat,
-		Longitude: result.Lon,
+		Latitude:  lat,
+		Longitude: lon,
 		City:      result.City,
-		Region:    result.RegionName,
-		Country:   result.CountryName,
+		Region:    result.Region,
+		Country:   GetCountryName(result.Country),
 	}, nil
 }
 
