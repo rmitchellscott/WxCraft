@@ -61,7 +61,7 @@ changelog:
 brews:
   - homepage: https://github.com/rmitchellscott/WxCraft
     description: METAR and TAF retrieval and decoding
-    license: MIT
+    license: GPL-3.0-only
     repository:
       owner: rmitchellscott
       name: homebrew-tap
