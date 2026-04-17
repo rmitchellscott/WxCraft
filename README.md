@@ -172,8 +172,9 @@ The application decodes a comprehensive range of weather phenomena, including:
 | OVC | Overcast (8/8 coverage) |
 
 ## License
+Copyright (C) 2025 Mitchell Scott
 
-This project is licensed under the GNU General Public License v3.0 - see the LICENSE file for details.
+Licensed under the GNU General Public License v3.0.
 
 ## Acknowledgments
 
