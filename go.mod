@@ -1,11 +1,11 @@
 module github.com/rmitchellscott/WxCraft
 
-go 1.24.1
+go 1.25
 
 require (
 	github.com/fatih/color v1.18.0
 	github.com/stretchr/testify v1.10.0
-	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
+	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 )
 
 require (
