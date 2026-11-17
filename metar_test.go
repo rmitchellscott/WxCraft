@@ -459,3 +459,10 @@ func TestMETARMissingStatuteMileVisibility(t *testing.T) {
 	assert.Empty(t, m.Unhandled)
 	assert.Contains(t, formatWithoutTime(m), "Visibility: Not reported\n")
 }
+
+func TestFormatNumberWithCommasKeepsSign(t *testing.T) {
+	assert.Equal(t, "-789", formatNumberWithCommas(-789))
+	assert.Equal(t, "-1,250", formatNumberWithCommas(-1250))
+	assert.Equal(t, "0", formatNumberWithCommas(0))
+	assert.Equal(t, "8,085", formatNumberWithCommas(8085))
+}

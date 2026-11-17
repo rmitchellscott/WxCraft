@@ -81,7 +81,7 @@ func FetchSiteInfo(stationCode string) (SiteInfo, error) {
 		country = GetCountryName(country)
 	}
 	return SiteInfo{
-		Name:      station.Site,
+		Name:      strings.TrimSpace(station.Site),
 		State:     station.State,
 		Country:   country,
 		Elevation: station.Elev,

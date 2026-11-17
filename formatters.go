@@ -42,6 +42,10 @@ func formatVisibility(visibility string) string {
 		return "Greater than 10 km"
 	}
 
+	if matches := visRegexKM.FindStringSubmatch(visibility); matches != nil {
+		return matches[1] + " kilometers"
+	}
+
 	// Decode common visibility formats
 	if visibility == "P6SM" {
 		return "Greater than 6 statute miles"
@@ -1152,17 +1156,19 @@ func capitalizeFirst(s string) string {
 
 // formatNumberWithCommas adds thousands separators to a number
 func formatNumberWithCommas(n int) string {
-	// Convert to string first
-	numStr := strconv.Itoa(n)
+	sign := ""
+	if n < 0 {
+		sign, n = "-", -n
+	}
+	digits := strconv.Itoa(n)
 
-	// Add commas for thousands
 	result := ""
-	for i, c := range numStr {
-		if i > 0 && (len(numStr)-i)%3 == 0 {
+	for i, c := range digits {
+		if i > 0 && (len(digits)-i)%3 == 0 {
 			result += ","
 		}
 		result += string(c)
 	}
 
-	return result
+	return sign + result
 }

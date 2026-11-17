@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 //go:embed assets/stations.json
@@ -53,7 +54,7 @@ func LoadEmbeddedStationInfo(stationCode string) (SiteInfo, error) {
 			countryName := GetCountryName(countryCode)
 
 			return SiteInfo{
-				Name:      station.Site,
+				Name:      strings.TrimSpace(station.Site),
 				State:     station.State,
 				Country:   countryName,
 				Elevation: station.Elev,

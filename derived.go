@@ -24,9 +24,8 @@ const (
 
 var flightCategoryNames = []string{lifr: "LIFR", ifr: "IFR", mvfr: "MVFR", vfr: "VFR"}
 
-// Meter visibilities are reported in ICAO steps whose conventional statute-mile equivalents are
-// 1600 m for 1 mile, 4800 m for 3 and 8000 m for 5. The exact 1609.344 would put 1600 m below 1 mile.
-const metersPerReportedMile = 1600.0
+// The exact factor matches aviationweather.gov, which rates a 1600 m report below 1 mile (LIFR)
+const metersPerStatuteMile = 1609.344
 
 // stations.json gives 9999 meters for stations, mostly buoys, whose elevation is unknown
 const unknownStationElevation = 9999
@@ -126,18 +125,23 @@ type statuteMiles struct {
 
 func parseStatuteMiles(visibility string) (statuteMiles, bool) {
 	if visibility == "CAVOK" {
-		return statuteMiles{miles: 10000 / metersPerReportedMile, moreThan: true}, true
+		return statuteMiles{miles: 10000 / metersPerStatuteMile, moreThan: true}, true
 	}
 
 	if matches := meterVisibilityRegex.FindStringSubmatch(visibility); matches != nil {
 		meters, _ := strconv.Atoi(matches[1])
 		switch meters {
 		case 0:
-			return statuteMiles{miles: 50 / metersPerReportedMile, lessThan: true}, true
+			return statuteMiles{miles: 50 / metersPerStatuteMile, lessThan: true}, true
 		case 9999:
-			return statuteMiles{miles: 10000 / metersPerReportedMile, moreThan: true}, true
+			return statuteMiles{miles: 10000 / metersPerStatuteMile, moreThan: true}, true
 		}
-		return statuteMiles{miles: float64(meters) / metersPerReportedMile}, true
+		return statuteMiles{miles: float64(meters) / metersPerStatuteMile}, true
+	}
+
+	if matches := visRegexKM.FindStringSubmatch(visibility); matches != nil {
+		kilometers, _ := strconv.Atoi(matches[1])
+		return statuteMiles{miles: float64(kilometers) * 1000 / metersPerStatuteMile}, true
 	}
 
 	matches := statuteMilesRegex.FindStringSubmatch(visibility)

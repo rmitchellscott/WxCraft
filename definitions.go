@@ -184,6 +184,7 @@ var (
 	windShearAltRegex = regexp.MustCompile(`^WS(\d{3})/(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
 	windShearRwyRegex = regexp.MustCompile(`^WS (?:(TKOF|LDG|ALL) RWY(\d{2}[LCR]?)?|R(?:WY)?(\d{2}[LCR]?))$`)
 	visRegexSM        = regexp.MustCompile(`^[MP]?\d+(?:/\d+)?SM$`)
+	visRegexKM        = regexp.MustCompile(`^(\d{1,2})KM$`)
 	visRegexNum       = regexp.MustCompile(`^\d{4}$`)
 	visRegexDir       = regexp.MustCompile(`^(\d{4})([NESW]{1,2})$`)
 	cloudRegex        = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC|///)(\d{3}|///)?(CB|TCU|///)?$|^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)

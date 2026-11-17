@@ -110,6 +110,7 @@ var (
 		{2, splitVisibilityRegex, setVisibility},
 		{1, visRegexDir, setVisibilityOrMinimum},
 		{1, visRegexSM, setVisibility},
+		{1, visRegexKM, setVisibility},
 		{1, visRegexNum, setVisibilityOrMinimum},
 		{1, ndvRegex, setVisibility},
 		cavokGroup,
