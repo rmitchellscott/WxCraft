@@ -1,273 +1,231 @@
 package main
 
 import (
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// DecodeTAF decodes a raw TAF string into a TAF struct
-func DecodeTAF(raw string) TAF {
+// DecodeTAF decodes a raw TAF string into a TAF struct. Day-of-month times in the report are
+// placed in the month nearest to now, then period times in the month nearest to the issue time.
+func DecodeTAF(raw string, now time.Time) TAF {
 	t := TAF{WeatherData: WeatherData{Raw: raw}}
+	parts := strings.Fields(raw)
 
-	// Remove line breaks and consolidate whitespace
-	cleanedRaw := strings.TrimSpace(raw)
-	cleanedRaw = regexp.MustCompile(`\s+`).ReplaceAllString(cleanedRaw, " ")
-
-	// Split into parts
-	parts := strings.Fields(cleanedRaw)
-	if len(parts) < 3 {
+	i := 0
+	if i < len(parts) && parts[i] == "TAF" {
+		i++
+	}
+	for ; i < len(parts); i++ {
+		if parts[i] == "AMD" {
+			t.Amended = true
+		} else if parts[i] == "COR" {
+			t.Corrected = true
+		} else {
+			break
+		}
+	}
+	if i >= len(parts) {
 		return t
 	}
 
-	// Check for TAF indicator and extract station
-	startIdx := 0
-	if parts[0] == "TAF" {
-		startIdx = 1
-		t.Station = parts[1]
-	} else {
-		t.Station = parts[0]
-	}
-	// Initialize default site info
-	t.SiteInfo = SiteInfo{
-		Name:    t.Station,
-		State:   "",
-		Country: "",
-	}
+	t.Station = parts[i]
+	t.SiteInfo = SiteInfo{Name: t.Station}
+	i++
 
-	// Parse issuance time
-	for i := startIdx + 1; i < len(parts); i++ {
-		if timeRegex.MatchString(parts[i]) {
-			if parsedTime, err := parseTime(parts[i]); err == nil {
-				t.Time = parsedTime
-			}
-			continue
+	reference := now
+	if i < len(parts) && (timeRegex.MatchString(parts[i]) || tafDayTimeRegex.MatchString(parts[i])) {
+		if issued, err := parseTime(strings.TrimSuffix(parts[i], "Z")+"Z", now); err == nil {
+			t.Time = issued
+			reference = issued
 		}
-
-		// Parse valid time period
-		if validRegex.MatchString(parts[i]) {
-			matches := validRegex.FindStringSubmatch(parts[i])
-			fromDay, _ := strconv.Atoi(matches[1])
-			fromHour, _ := strconv.Atoi(matches[2])
-			toDay, _ := strconv.Atoi(matches[3])
-			toHour, _ := strconv.Atoi(matches[4])
-
-			// Use current year and month
-			now := time.Now().UTC()
-			t.ValidFrom = time.Date(now.Year(), now.Month(), fromDay, fromHour, 0, 0, 0, time.UTC)
-			t.ValidTo = time.Date(now.Year(), now.Month(), toDay, toHour, 0, 0, 0, time.UTC)
-			break
-		}
-	}
-
-	// Create base forecast from the main TAF line
-	baseForecast := Forecast{
-		Type: "BASE",
-		From: t.ValidFrom,
-		Raw:  cleanedRaw,
-	}
-
-	// Find index of first FM, BECMG, TEMPO, or PROB
-	var changeIndex int
-	for i, part := range parts {
-		if part == "FM" || strings.HasPrefix(part, "FM") ||
-			part == "BECMG" || part == "TEMPO" ||
-			strings.HasPrefix(part, "PROB") {
-			changeIndex = i
-			break
-		}
-
-		if i >= len(parts)-1 {
-			changeIndex = len(parts)
-		}
-	}
-
-	// Parse elements for base forecast
-	if changeIndex > 0 {
-		validTimeRegex := regexp.MustCompile(`\d{4}/\d{4}`)
-		for i := startIdx + 1; i < changeIndex; i++ {
-			part := parts[i]
-			if timeRegex.MatchString(part) || validTimeRegex.MatchString(part) {
-				continue
-			}
-			parseForecastElement(&baseForecast, part)
-		}
-	}
-
-	t.Forecasts = append(t.Forecasts, baseForecast)
-
-	// Process change groups
-	i := changeIndex
-	for i < len(parts) {
-		part := parts[i]
-
-		if part == "FM" || strings.HasPrefix(part, "FM") {
-			forecast := Forecast{
-				Type: "FM",
-				Raw:  part,
-			}
-
-			// Parse FM time
-			var fmTime string
-			if part == "FM" && i+1 < len(parts) {
-				fmTime = parts[i+1]
-				i++
-			} else if strings.HasPrefix(part, "FM") {
-				fmTime = part[2:]
-			}
-
-			if len(fmTime) == 6 {
-				day, _ := strconv.Atoi(fmTime[0:2])
-				hour, _ := strconv.Atoi(fmTime[2:4])
-				minute, _ := strconv.Atoi(fmTime[4:6])
-
-				// Use current year and month
-				now := time.Now().UTC()
-				forecast.From = time.Date(now.Year(), now.Month(), day, hour, minute, 0, 0, time.UTC)
-
-				// Handle month rollover
-				if now.Day() > day {
-					forecast.From = forecast.From.AddDate(0, 1, 0)
-				}
-			}
-
-			// Set the To time of the previous forecast if it needs it
-			if len(t.Forecasts) > 0 && t.Forecasts[len(t.Forecasts)-1].To.IsZero() {
-				t.Forecasts[len(t.Forecasts)-1].To = forecast.From
-			}
-
-			// Parse elements until next change indicator
-			i++
-			for i < len(parts) {
-				nextPart := parts[i]
-				if nextPart == "FM" || strings.HasPrefix(nextPart, "FM") ||
-					nextPart == "BECMG" || nextPart == "TEMPO" ||
-					strings.HasPrefix(nextPart, "PROB") {
-					break
-				}
-				parseForecastElement(&forecast, nextPart)
-				i++
-			}
-
-			t.Forecasts = append(t.Forecasts, forecast)
-			continue
-		}
-
-		if part == "BECMG" || part == "TEMPO" {
-			forecast := Forecast{
-				Type: part,
-				Raw:  part,
-			}
-
-			// Parse time period if available
-			i++
-			if i < len(parts) {
-				timeRegex := regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
-				if timeRegex.MatchString(parts[i]) {
-					matches := timeRegex.FindStringSubmatch(parts[i])
-					fromDay, _ := strconv.Atoi(matches[1])
-					fromHour, _ := strconv.Atoi(matches[2])
-					toDay, _ := strconv.Atoi(matches[3])
-					toHour, _ := strconv.Atoi(matches[4])
-
-					// Use current year and month
-					now := time.Now().UTC()
-					forecast.From = time.Date(now.Year(), now.Month(), fromDay, fromHour, 0, 0, 0, time.UTC)
-					forecast.To = time.Date(now.Year(), now.Month(), toDay, toHour, 0, 0, 0, time.UTC)
-					i++
-				}
-			}
-
-			// Parse elements until next change indicator
-			for i < len(parts) {
-				nextPart := parts[i]
-				if nextPart == "FM" || strings.HasPrefix(nextPart, "FM") ||
-					nextPart == "BECMG" || nextPart == "TEMPO" ||
-					strings.HasPrefix(nextPart, "PROB") {
-					break
-				}
-				parseForecastElement(&forecast, nextPart)
-				i++
-			}
-
-			t.Forecasts = append(t.Forecasts, forecast)
-			continue
-		}
-
-		// Handle PROB30 and PROB40 forecasts
-		if strings.HasPrefix(part, "PROB") {
-			probValue, err := strconv.Atoi(part[4:])
-			if err != nil {
-				// If we can't parse the probability value, skip this part
-				i++
-				continue
-			}
-
-			forecast := Forecast{
-				Type:        part,
-				Probability: probValue,
-				Raw:         part,
-			}
-
-			// Parse time period if available
-			i++
-			if i < len(parts) {
-				timeRegex := regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
-				if timeRegex.MatchString(parts[i]) {
-					matches := timeRegex.FindStringSubmatch(parts[i])
-					fromDay, _ := strconv.Atoi(matches[1])
-					fromHour, _ := strconv.Atoi(matches[2])
-					toDay, _ := strconv.Atoi(matches[3])
-					toHour, _ := strconv.Atoi(matches[4])
-
-					// Use current year and month
-					now := time.Now().UTC()
-					forecast.From = time.Date(now.Year(), now.Month(), fromDay, fromHour, 0, 0, 0, time.UTC)
-					forecast.To = time.Date(now.Year(), now.Month(), toDay, toHour, 0, 0, 0, time.UTC)
-					i++
-				}
-			}
-
-			// If no time period is given, use the current valid period
-			if forecast.From.IsZero() {
-				// Try to use the time from the most recent forecast
-				if len(t.Forecasts) > 0 {
-					lastForecast := t.Forecasts[len(t.Forecasts)-1]
-					forecast.From = lastForecast.From
-					forecast.To = lastForecast.To
-				} else {
-					forecast.From = t.ValidFrom
-					forecast.To = t.ValidTo
-				}
-			}
-
-			// Parse elements until next change indicator
-			for i < len(parts) {
-				nextPart := parts[i]
-				if nextPart == "FM" || strings.HasPrefix(nextPart, "FM") ||
-					nextPart == "BECMG" || nextPart == "TEMPO" ||
-					strings.HasPrefix(nextPart, "PROB") {
-					break
-				}
-				parseForecastElement(&forecast, nextPart)
-				i++
-			}
-
-			t.Forecasts = append(t.Forecasts, forecast)
-			continue
-		}
-
 		i++
 	}
 
-	// Set the final forecast's To time if needed
-	if len(t.Forecasts) > 0 && t.Forecasts[len(t.Forecasts)-1].To.IsZero() {
-		t.Forecasts[len(t.Forecasts)-1].To = t.ValidTo
+	if i < len(parts) && parts[i] == "NIL" {
+		t.Nil = true
+		i++
 	}
 
+	if i < len(parts) {
+		if from, to, ok := parsePeriod(parts[i], reference); ok {
+			t.ValidFrom, t.ValidTo = from, to
+			if t.Time.IsZero() {
+				reference = from
+			}
+			i++
+		}
+	}
+
+	if i < len(parts) && parts[i] == "CNL" {
+		t.Cancelled = true
+		i++
+	}
+
+	body := parts[i:]
+	for j, part := range body {
+		if part == "RMK" {
+			t.Remarks = strings.Join(body[j+1:], " ")
+			body = body[:j]
+			break
+		}
+	}
+
+	if t.Nil || t.Cancelled {
+		return t
+	}
+
+	current := Forecast{Type: "BASE", From: t.ValidFrom}
+	periodStart := 0
+	finishPeriod := func(end int) {
+		current.Raw = strings.Join(body[periodStart:end], " ")
+		t.Forecasts = append(t.Forecasts, current)
+	}
+
+	for j := 0; j < len(body); {
+		if next, consumed, ok := parseChangeGroup(body, j, reference); ok {
+			finishPeriod(j)
+			if next.Type == "FM" {
+				endOpenPeriod(t.Forecasts, next.From)
+			}
+			if next.From.IsZero() {
+				next.From, next.To = t.ValidFrom, t.ValidTo
+			}
+			current = next
+			periodStart = j
+			j += consumed
+			continue
+		}
+
+		part := body[j]
+		if j+1 < len(body) && tafVisWholeRegex.MatchString(part) && tafVisFractionRegex.MatchString(body[j+1]) {
+			current.Visibility = part + " " + body[j+1]
+			j += 2
+			continue
+		}
+
+		if matches := tafTemperatureRegex.FindStringSubmatch(part); matches != nil {
+			if temperature, ok := parseTemperatureForecast(matches, reference); ok {
+				t.Temperatures = append(t.Temperatures, temperature)
+				j++
+				continue
+			}
+		}
+
+		if !parseForecastElement(&current, part) {
+			current.Unhandled = append(current.Unhandled, part)
+		}
+		j++
+	}
+	finishPeriod(len(body))
+
+	endOpenPeriod(t.Forecasts, t.ValidTo)
+
 	return t
+}
+
+// parseChangeGroup recognizes a change group header (FMddhhmm, FM ddhhmm, BECMG, TEMPO, INTER, or
+// PROBnn optionally followed by TEMPO or INTER, then an optional ddhh/ddhh period) at body[i]
+func parseChangeGroup(body []string, i int, reference time.Time) (Forecast, int, bool) {
+	part := body[i]
+
+	if matches := tafFromRegex.FindStringSubmatch(part); matches != nil {
+		return fromForecast(matches, 1, reference)
+	}
+	if part == "FM" && i+1 < len(body) {
+		if matches := tafDayTimeRegex.FindStringSubmatch(body[i+1]); matches != nil {
+			return fromForecast(matches, 2, reference)
+		}
+	}
+
+	var forecast Forecast
+	consumed := 1
+	switch {
+	case part == "BECMG" || part == "TEMPO" || part == "INTER":
+		forecast.Type = part
+	case tafProbRegex.MatchString(part):
+		matches := tafProbRegex.FindStringSubmatch(part)
+		forecast.Probability, _ = strconv.Atoi(matches[1])
+		forecast.Type = "PROB"
+		if matches[2] != "" {
+			forecast.Type = matches[2]
+		} else if i+1 < len(body) && (body[i+1] == "TEMPO" || body[i+1] == "INTER") {
+			forecast.Type = body[i+1]
+			consumed++
+		}
+	default:
+		return Forecast{}, 0, false
+	}
+
+	if i+consumed < len(body) {
+		if from, to, ok := parsePeriod(body[i+consumed], reference); ok {
+			forecast.From, forecast.To = from, to
+			consumed++
+		}
+	}
+	return forecast, consumed, true
+}
+
+func fromForecast(matches []string, consumed int, reference time.Time) (Forecast, int, bool) {
+	day, _ := strconv.Atoi(matches[1])
+	hour, _ := strconv.Atoi(matches[2])
+	minute, _ := strconv.Atoi(matches[3])
+	from, ok := resolveDayTime(reference, day, hour, minute)
+	if !ok {
+		return Forecast{}, 0, false
+	}
+	return Forecast{Type: "FM", From: from}, consumed, true
+}
+
+// parsePeriod decodes a ddhh/ddhh validity or change period
+func parsePeriod(part string, reference time.Time) (time.Time, time.Time, bool) {
+	matches := validRegex.FindStringSubmatch(part)
+	if matches == nil {
+		return time.Time{}, time.Time{}, false
+	}
+	fromDay, _ := strconv.Atoi(matches[1])
+	fromHour, _ := strconv.Atoi(matches[2])
+	toDay, _ := strconv.Atoi(matches[3])
+	toHour, _ := strconv.Atoi(matches[4])
+
+	from, fromOK := resolveDayTime(reference, fromDay, fromHour, 0)
+	if !fromOK {
+		return time.Time{}, time.Time{}, false
+	}
+	to, toOK := resolveDayTime(from, toDay, toHour, 0)
+	if !toOK || to.Before(from) {
+		return time.Time{}, time.Time{}, false
+	}
+	return from, to, true
+}
+
+// endOpenPeriod closes the most recent BASE or FM period that has no end time; TEMPO, BECMG,
+// INTER, and PROB periods overlay those and do not end them
+func endOpenPeriod(forecasts []Forecast, end time.Time) {
+	for k := len(forecasts) - 1; k >= 0; k-- {
+		if forecasts[k].Type == "BASE" || forecasts[k].Type == "FM" {
+			if forecasts[k].To.IsZero() {
+				forecasts[k].To = end
+			}
+			return
+		}
+	}
+}
+
+func parseTemperatureForecast(matches []string, reference time.Time) (TemperatureForecast, bool) {
+	celsius, _ := strconv.Atoi(matches[3])
+	if matches[2] == "M" {
+		celsius = -celsius
+	}
+	day, _ := strconv.Atoi(matches[4])
+	hour, _ := strconv.Atoi(matches[5])
+	at, ok := resolveDayTime(reference, day, hour, 0)
+	if !ok {
+		return TemperatureForecast{}, false
+	}
+	kind := map[string]string{"X": "MAX", "N": "MIN"}[matches[1]]
+	return TemperatureForecast{Kind: kind, Celsius: celsius, At: at, Raw: matches[0]}, true
 }
 
 // isWeatherCode reports whether s is a present or recent weather group
@@ -342,7 +300,7 @@ func DecodeMETAR(raw string) METAR {
 	// Time
 	bodyStart := stationIndex + 1
 	if timeRegex.MatchString(parts[bodyStart]) {
-		if parsedTime, err := parseTime(parts[bodyStart]); err == nil {
+		if parsedTime, err := parseTime(parts[bodyStart], time.Now().UTC()); err == nil {
 			m.Time = parsedTime
 		}
 		bodyStart++

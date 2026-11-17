@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 )
@@ -583,7 +584,7 @@ func processTAF(stationCode string, rawInput string, stdinHasData bool, noRaw bo
 	// Decode and display the TAF if requested
 	if !noDecode {
 		// Decode the TAF
-		taf := DecodeTAF(rawTAF)
+		taf := DecodeTAF(rawTAF, time.Now().UTC())
 
 		// Add site information
 		taf.SiteInfo = siteInfo

@@ -141,7 +141,7 @@ var (
 	windShearAltRegex = regexp.MustCompile(`^WS(\d{3})/(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
 	windShearRwyRegex = regexp.MustCompile(`^WS(\s+(TKOF|LDG|ALL)\s+RWY(\d{2}[LCR]?)?|\s+R(\d{2}[LCR]?)?)$`)
 	visRegexM         = regexp.MustCompile(`^M?(\d+(?:/\d+)?)SM$`)
-	visRegexP         = regexp.MustCompile(`^(\d+(?:/\d+)?|M|P)(\d+)SM$`)
+	visRegexP         = regexp.MustCompile(`^[MP]?(\d{1,2}|\d/\d{1,2})SM$`)
 	visRegexNum       = regexp.MustCompile(`^\d{4}$`)
 	visRegexDir       = regexp.MustCompile(`^(\d{4})([NESW]{1,2})$`)
 	cloudRegex        = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC|///)(\d{3}|///)?(CB|TCU|///)?$|^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
@@ -170,6 +170,15 @@ var (
 	runwaySnowClosedRegex = regexp.MustCompile(`^(R(\d{2}[CLR]?)?/)?SNOCLO$`)
 	seaStateRegex         = regexp.MustCompile(`^W(M?\d{2}|//)/(S([\d/])|H(\d{1,3}|/{1,3})|//?)$`)
 	militaryColorRegex    = regexp.MustCompile(`^(BLACK)?(BLU|WHT|GRN|YLO[12]?|AMB|RED)\+?$`)
+	tafFromRegex          = regexp.MustCompile(`^FM(\d{2})(\d{2})(\d{2})$`)
+	tafDayTimeRegex       = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})$`)
+	tafProbRegex          = regexp.MustCompile(`^PROB(\d{2})(TEMPO|INTER)?$`)
+	tafVisWholeRegex      = regexp.MustCompile(`^\d$`)
+	tafVisFractionRegex   = regexp.MustCompile(`^\d/\d{1,2}SM$`)
+	tafTemperatureRegex   = regexp.MustCompile(`^T([XN]?)(M?)(\d{2})/(\d{2})(\d{2})Z*$`)
+	tafQNHInchesRegex     = regexp.MustCompile(`^QNH(\d{4})INS$`)
+	tafIcingRegex         = regexp.MustCompile(`^6(\d)(\d{3})(\d)$`)
+	tafTurbulenceRegex    = regexp.MustCompile(`^5(\d)(\d{3})(\d)$`)
 )
 
 // WeatherData contains common fields for different weather reports
@@ -278,26 +287,57 @@ type METAR struct {
 	Unhandled        []string
 }
 
+// HazardLayer is a military icing (6IhhhT) or turbulence (5Bhhht) forecast group
+type HazardLayer struct {
+	Intensity     string // WMO code table 1738 (turbulence) or 1734 (icing) digit
+	BaseFeet      int
+	ThicknessFeet int
+	Raw           string
+}
+
+// TemperatureForecast is a TX (maximum), TN (minimum), or plain T forecast temperature group
+type TemperatureForecast struct {
+	Kind    string // "MAX", "MIN", or "" for a plain T group
+	Celsius int
+	At      time.Time
+	Raw     string
+}
+
 // Forecast represents a single forecast period within a TAF
 type Forecast struct {
-	Type        string    // FM (from), TEMPO (temporary), BECMG (becoming), PROB30, PROB40, etc.
-	Probability int       // For PROB forecasts, the probability value (30, 40, etc.)
-	From        time.Time // Start time of this forecast period
-	To          time.Time // End time of this forecast period (if applicable)
-	Wind        Wind
-	WindShear   []WindShear
-	Visibility  string
-	Weather     []string
-	Clouds      []Cloud
-	VertVis     int    // Vertical visibility in hundreds of feet
-	Raw         string // Raw text for this forecast period
+	Type          string    // BASE, FM, TEMPO, BECMG, INTER, or PROB (a PROB without TEMPO/INTER)
+	Probability   int       // PROBnn value; also set on a PROBnn TEMPO or PROBnn INTER period
+	From          time.Time // Start time of this forecast period
+	To            time.Time // End time of this forecast period (if applicable)
+	Wind          Wind
+	WindVariation string
+	WindShear     []WindShear
+	Visibility    string
+	CAVOK         bool
+	Weather       []string
+	NSW           bool // no significant weather
+	Clouds        []Cloud
+	NSC           bool // no significant cloud
+	VertVis       int  // Vertical visibility in hundreds of feet
+	Pressure      float64
+	PressureUnit  string
+	Icing         []HazardLayer
+	Turbulence    []HazardLayer
+	Unhandled     []string
+	Raw           string // Raw text for this forecast period
 }
 
 // TAF represents a decoded Terminal Aerodrome Forecast
 type TAF struct {
 	WeatherData
-	SiteInfo  SiteInfo
-	ValidFrom time.Time
-	ValidTo   time.Time
-	Forecasts []Forecast
+	SiteInfo     SiteInfo
+	Amended      bool
+	Corrected    bool
+	Nil          bool
+	Cancelled    bool
+	ValidFrom    time.Time
+	ValidTo      time.Time
+	Forecasts    []Forecast
+	Temperatures []TemperatureForecast
+	Remarks      string // raw text after RMK
 }

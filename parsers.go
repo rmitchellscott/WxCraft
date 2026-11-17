@@ -10,8 +10,8 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-// parseTime parses a time string in the format "DDHHMM"Z
-func parseTime(timeStr string) (time.Time, error) {
+// parseTime parses a "DDHHMMZ" time string, choosing the month and year that put it nearest to reference
+func parseTime(timeStr string, reference time.Time) (time.Time, error) {
 	matches := timeRegex.FindStringSubmatch(timeStr)
 	if matches == nil {
 		return time.Time{}, fmt.Errorf("invalid time format: %s", timeStr)
@@ -21,16 +21,43 @@ func parseTime(timeStr string) (time.Time, error) {
 	hour, _ := strconv.Atoi(matches[2])
 	minute, _ := strconv.Atoi(matches[3])
 
-	// Use current year and month
-	now := time.Now().UTC()
-	result := time.Date(now.Year(), now.Month(), day, hour, minute, 0, 0, time.UTC)
+	result, ok := resolveDayTime(reference, day, hour, minute)
+	if !ok {
+		return time.Time{}, fmt.Errorf("invalid day/time: %s", timeStr)
+	}
+	return result, nil
+}
 
-	// Handle month rollover
-	if now.Day() < day {
-		result = result.AddDate(0, -1, 0)
+// resolveDayTime places a day-of-month and time in the month (before, of, or after reference)
+// that puts it nearest to reference. Hour 24 means midnight at the end of that day.
+func resolveDayTime(reference time.Time, day, hour, minute int) (time.Time, bool) {
+	if day < 1 || day > 31 || hour > 24 || minute > 59 || (hour == 24 && minute != 0) {
+		return time.Time{}, false
 	}
 
-	return result, nil
+	reference = reference.UTC()
+	monthStart := time.Date(reference.Year(), reference.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	var best time.Time
+	for _, monthOffset := range []int{-1, 0, 1} {
+		candidateMonth := monthStart.AddDate(0, monthOffset, 0)
+		dayStart := time.Date(candidateMonth.Year(), candidateMonth.Month(), day, 0, 0, 0, 0, time.UTC)
+		if dayStart.Month() != candidateMonth.Month() {
+			continue
+		}
+		candidate := dayStart.Add(time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute)
+		if best.IsZero() || absDuration(candidate.Sub(reference)) < absDuration(best.Sub(reference)) {
+			best = candidate
+		}
+	}
+	return best, !best.IsZero()
+}
+
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
 }
 
 // parseWind parses a wind string in the format "DDDSSKT", "DDDSSGGKT", "DDDSSMPS", or "DDDSSGGMPS"
@@ -321,62 +348,85 @@ func parseRunwayCondition(condStr string) RunwayCondition {
 	return cond
 }
 
-// parseForecastElement parses a single element of a forecast
-func parseForecastElement(forecast *Forecast, part string) {
-	// Wind - check both KT and MPS formats
+// parseForecastElement decodes one forecast group into forecast and reports whether it recognized it
+func parseForecastElement(forecast *Forecast, part string) bool {
 	if windRegex.MatchString(part) || windRegexMPS.MatchString(part) {
 		forecast.Wind = parseWind(part)
-		return
-	}
-	// Wind shear
-	if strings.HasPrefix(part, "WS") {
-		ws := parseWindShear(part)
-		forecast.WindShear = append(forecast.WindShear, ws)
-		return
+		return true
 	}
 
-	// Visibility in statute miles
-	if visRegexP.MatchString(part) || part == "P6SM" {
+	if windVarRegex.MatchString(part) {
+		forecast.WindVariation = part
+		return true
+	}
+
+	if windShearAltRegex.MatchString(part) {
+		forecast.WindShear = append(forecast.WindShear, parseWindShear(part))
+		return true
+	}
+
+	if visRegexP.MatchString(part) || isVisibilityInMeters(part) {
 		forecast.Visibility = part
-		return
+		return true
 	}
 
-	// Visibility in meters
-	if isVisibilityInMeters(part) {
-		forecast.Visibility = part
-		return
+	switch part {
+	case "CAVOK":
+		forecast.CAVOK = true
+		forecast.Visibility = "CAVOK"
+		return true
+	case "NSW":
+		forecast.NSW = true
+		return true
+	case "NSC":
+		forecast.NSC = true
+		return true
 	}
 
-	// Vertical visibility (VV)
-	if isVerticalVisibility(part) {
-		// Extract the height value
-		matches := vvRegex.FindStringSubmatch(part)
-		if len(matches) > 1 {
-			vertVis, _ := strconv.Atoi(matches[1])
-			forecast.VertVis = vertVis
-		}
-		return
+	if matches := vvRegex.FindStringSubmatch(part); matches != nil {
+		forecast.VertVis, _ = strconv.Atoi(matches[1])
+		return true
 	}
 
-	// Clouds - check this BEFORE weather phenomena and make sure it takes priority
-	// over weather code detection
 	if cloudRegex.MatchString(part) {
-		cloud := parseCloud(part)
-		forecast.Clouds = append(forecast.Clouds, cloud)
-		return
+		forecast.Clouds = append(forecast.Clouds, parseCloud(part))
+		return true
 	}
 
-	// Weather phenomena - check for weather codes, but not if it looks like a cloud code
+	if matches := tafQNHInchesRegex.FindStringSubmatch(part); matches != nil {
+		hundredths, _ := strconv.Atoi(matches[1])
+		forecast.Pressure = float64(hundredths) / 100.0
+		forecast.PressureUnit = "inHg"
+		return true
+	}
+
+	if matches := tafIcingRegex.FindStringSubmatch(part); matches != nil {
+		forecast.Icing = append(forecast.Icing, parseHazardLayer(matches, part))
+		return true
+	}
+
+	if matches := tafTurbulenceRegex.FindStringSubmatch(part); matches != nil {
+		forecast.Turbulence = append(forecast.Turbulence, parseHazardLayer(matches, part))
+		return true
+	}
+
 	if isWeatherCode(part) {
-		// Additional check to avoid misclassifying cloud patterns as weather codes
-		if !strings.HasPrefix(part, "SKC") &&
-			!strings.HasPrefix(part, "CLR") &&
-			!strings.HasPrefix(part, "FEW") &&
-			!strings.HasPrefix(part, "SCT") &&
-			!strings.HasPrefix(part, "BKN") &&
-			!strings.HasPrefix(part, "OVC") {
-			forecast.Weather = append(forecast.Weather, part)
-			return
-		}
+		forecast.Weather = append(forecast.Weather, part)
+		return true
+	}
+
+	return false
+}
+
+// parseHazardLayer decodes the intensity, base (hundreds of feet), and thickness (thousands of feet)
+// captured from a 6IhhhT or 5Bhhht group
+func parseHazardLayer(matches []string, raw string) HazardLayer {
+	base, _ := strconv.Atoi(matches[2])
+	thickness, _ := strconv.Atoi(matches[3])
+	return HazardLayer{
+		Intensity:     matches[1],
+		BaseFeet:      base * 100,
+		ThicknessFeet: thickness * 1000,
+		Raw:           raw,
 	}
 }
