@@ -197,6 +197,28 @@ func TestProcessRemarks(t *testing.T) {
 			},
 		},
 		{
+			name:    "Canadian snowfall since the last main synoptic hour",
+			remarks: "SN8 /S07/ /S10 AFT 23Z/ /S05 AFT 0300 UTC/ SLP829",
+			want: []Remark{
+				{"SN8", "cloud layer opacity: snow 8/8"},
+				{"/S07/", "snowfall since the last main synoptic hour: 7 cm"},
+				{"/S10 AFT 23Z/", "snowfall since 23:00 UTC: 10 cm"},
+				{"/S05 AFT 0300 UTC/", "snowfall since 03:00 UTC: 5 cm"},
+				{"SLP829", "sea level pressure 982.9 hPa"},
+			},
+		},
+		{
+			name:    "numbers inside plain language stay with the text",
+			remarks: "A01 WINDS UN-RELIABLE 350 TO 45 DEGREES RW 14/32 EDGE LIGHTS OTS BKN BKN080 SLP012 27",
+			want: []Remark{
+				{"A01", "automated station without precipitation sensor"},
+				{"WINDS UN-RELIABLE 350 TO 45 DEGREES RW 14/32 EDGE LIGHTS OTS BKN", "plain-language remark"},
+				{"BKN080", "unknown remark code"},
+				{"SLP012", "sea level pressure 1001.2 hPa"},
+				{"27", "unknown remark code"},
+			},
+		},
+		{
 			name:    "military color states",
 			remarks: "BLU YLO1 BLACKRED",
 			want: []Remark{

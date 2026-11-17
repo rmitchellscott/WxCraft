@@ -91,6 +91,7 @@ var (
 	remarkEventPhenomenon    = regexp.MustCompile(`^(?:(?:SH|FZ|BL|DR|TS)?` + rmkPrecip + `+|TS|FC|SQ|FG|BR|HZ|FU|VA|DU|SA|PY|SS|DS)$`)
 	remarkCloudLayerRegex    = regexp.MustCompile(`(` + rmkCloudLayers + `)(\d)`)
 	remarkPlainLanguageRegex = regexp.MustCompile(`^[A-Z][A-Z.,'?/-]*$`)
+	remarkPlainNumberRegex   = regexp.MustCompile(`^[\d/.-]+$`)
 )
 
 var remarkLocationWords = map[string]string{
@@ -399,6 +400,14 @@ var remarkRules = []remarkRule{
 		return fmt.Sprintf("cloud types: low %s, middle %s, high %s",
 			describeCloudType(lowCloudTypes, m[1]), describeCloudType(middleCloudTypes, m[2]), describeCloudType(highCloudTypes, m[3]))
 	}},
+	// MANOBS 6.6.2.10 and 6.6.2.11: snowfall in whole centimeters since the
+	// last main synoptic hour, or since hour HH at part-time stations.
+	{remarkPattern(`/S(\d{2})(?: AFT (\d{2})(?:Z|00 UTC))?/`), func(m []string) string {
+		if m[2] == "" {
+			return fmt.Sprintf("snowfall since the last main synoptic hour: %d cm", atoi(m[1]))
+		}
+		return fmt.Sprintf("snowfall since %s:00 UTC: %d cm", m[2], atoi(m[1]))
+	}},
 	{remarkPattern(`SNINCR (\d+)/(\d+)`), func(m []string) string {
 		return fmt.Sprintf("snow increasing rapidly: %d inches in the past hour, %d inches on ground", atoi(m[1]), atoi(m[2]))
 	}},
@@ -676,6 +685,14 @@ func decodeRemarkGroup(parts []string) (raw string, consumed int, description st
 	return "", 0, ""
 }
 
+func isPlainLanguageWord(parts []string, remarkCodes map[string]string) bool {
+	if _, ok := remarkCodes[parts[0]]; ok || !remarkPlainLanguageRegex.MatchString(parts[0]) {
+		return false
+	}
+	_, consumed, _ := decodeRemarkGroup(parts)
+	return consumed == 0
+}
+
 // processRemarks processes the remarks section of a METAR
 func processRemarks(remarkParts []string) []Remark {
 	remarks := []Remark{}
@@ -709,7 +726,9 @@ func processRemarks(remarkParts []string) []Remark {
 			continue
 		}
 
-		if remarkPlainLanguageRegex.MatchString(part) {
+		if remarkPlainLanguageRegex.MatchString(part) ||
+			len(plainLanguage) > 0 && remarkPlainNumberRegex.MatchString(part) &&
+				i+1 < len(remarkParts) && isPlainLanguageWord(remarkParts[i+1:], remarkCodes) {
 			plainLanguage = append(plainLanguage, part)
 			i++
 			continue

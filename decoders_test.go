@@ -33,7 +33,7 @@ var coverageThresholds = map[string]int{
 	"metar.cloud_mismatch":               0,
 	"metar.temperature_mismatch":         0,
 	"metar.pressure_mismatch":            0,
-	"metar.remark_unknown":               910,
+	"metar.remark_unknown":               842,
 	"taf.station_mismatch":               0,
 	"taf.period_count_mismatch":          83,
 	"taf.weather_not_weather":            0,
