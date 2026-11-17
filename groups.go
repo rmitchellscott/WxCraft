@@ -26,13 +26,14 @@ type conditions struct {
 	nsw              bool
 	clouds           []Cloud
 	nsc              bool
-	vertVis          int
+	vertVis          *int
 	vertVisMissing   bool
 	temperature      *int
 	dewPoint         *int
 	temperatures     []TemperatureForecast
 	pressure         float64
 	pressureUnit     string
+	secondPressure   PressureReading
 	stationPressure  float64
 	seaStates        []SeaState
 	icing            []HazardLayer
@@ -91,28 +92,31 @@ var (
 	}
 
 	setVisibility = whole(func(c *conditions, raw string) { c.visibility = raw })
-	cavokGroup    = group{1, cavokRegex, whole(func(c *conditions, raw string) {
+	// A second meter visibility, as in "9999 2500" or "4000NE 1500", is the minimum visibility
+	// from a station that cannot report its direction
+	setVisibilityOrMinimum = whole(func(c *conditions, raw string) {
+		if c.visibility != "" {
+			c.minVisibility = raw
+		} else {
+			c.visibility = raw
+		}
+	})
+	cavokGroup = group{1, cavokRegex, whole(func(c *conditions, raw string) {
 		c.cavok = true
 		c.visibility = raw
 		appendSpecialCode(c, raw)
 	})}
 	visibilityGroups = []group{
 		{2, splitVisibilityRegex, setVisibility},
-		{1, visRegexDir, whole(func(c *conditions, raw string) {
-			if c.visibility != "" {
-				c.minVisibility = raw
-			} else {
-				c.visibility = raw
-			}
-		})},
+		{1, visRegexDir, setVisibilityOrMinimum},
 		{1, visRegexSM, setVisibility},
-		{1, visRegexNum, setVisibility},
+		{1, visRegexNum, setVisibilityOrMinimum},
 		{1, ndvRegex, setVisibility},
 		cavokGroup,
 	}
 	visibilityMissingGroup = group{1, visMissingRegex, whole(func(c *conditions, raw string) {
 		if c.visibility == "" {
-			c.visibility = "////"
+			c.visibility = raw
 		}
 	})}
 
@@ -135,7 +139,8 @@ var (
 	nswGroup            = group{1, nswRegex, whole(func(c *conditions, raw string) { c.nsw = true })}
 
 	vertVisGroup = group{1, vvRegex, func(c *conditions, match []string) bool {
-		c.vertVis, _ = strconv.Atoi(match[1])
+		hundredsOfFeet, _ := strconv.Atoi(match[1])
+		c.vertVis = &hundredsOfFeet
 		return true
 	}}
 	vertVisMissingGroup = group{1, vvMissingRegex, whole(func(c *conditions, raw string) { c.vertVisMissing = true })}
@@ -166,28 +171,22 @@ var (
 		return ok
 	}}
 
-	// Only the first pressure group counts; some stations report QNH in both hPa and inHg
 	pressureGroups = []group{
 		{1, pressureMissingRegex, whole(func(c *conditions, raw string) {
-			if c.pressureUnit == "" {
-				c.pressureUnit = "hPa"
-				if raw[0] == 'A' {
-					c.pressureUnit = "inHg"
-				}
+			unit := "hPa"
+			if raw[0] == 'A' {
+				unit = "inHg"
 			}
+			c.addPressure(0, unit)
 		})},
 		{1, pressureHPaRegex, func(c *conditions, match []string) bool {
-			if c.pressureUnit == "" {
-				hectopascals, _ := strconv.Atoi(match[1])
-				c.pressure, c.pressureUnit = float64(hectopascals), "hPa"
-			}
+			hectopascals, _ := strconv.Atoi(match[1])
+			c.addPressure(float64(hectopascals), "hPa")
 			return true
 		}},
 		{1, pressureRegex, func(c *conditions, match []string) bool {
-			if c.pressureUnit == "" {
-				hundredths, _ := strconv.Atoi(match[1])
-				c.pressure, c.pressureUnit = float64(hundredths)/100.0, "inHg"
-			}
+			hundredths, _ := strconv.Atoi(match[1])
+			c.addPressure(float64(hundredths)/100.0, "inHg")
 			return true
 		}},
 	}
@@ -230,6 +229,17 @@ var (
 		{1, windNoteRegex, appendWindNote},
 	}
 )
+
+// addPressure keeps the first pressure group as the primary one and records the next, since some
+// stations report QNH in both hPa and inHg
+func (c *conditions) addPressure(value float64, unit string) {
+	switch {
+	case c.pressureUnit == "":
+		c.pressure, c.pressureUnit = value, unit
+	case c.secondPressure.Unit == "":
+		c.secondPressure = PressureReading{Value: value, Unit: unit}
+	}
+}
 
 func appendStationPressure(c *conditions, match []string) bool {
 	c.stationPressure, _ = strconv.ParseFloat(strings.Replace(match[1], "/", ".", 1), 64)
@@ -357,6 +367,7 @@ func (c conditions) applyToMETAR(m *METAR) {
 	m.DewPoint = c.dewPoint
 	m.Pressure = c.pressure
 	m.PressureUnit = c.pressureUnit
+	m.SecondPressure = c.secondPressure
 	m.StationPressure = c.stationPressure
 	m.SeaStates = c.seaStates
 	m.SpecialCodes = append(m.SpecialCodes, c.specialCodes...)

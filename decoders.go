@@ -110,6 +110,7 @@ func DecodeTAF(raw string, now time.Time) TAF {
 	}
 
 	endOpenPeriod(t.Forecasts, t.ValidTo)
+	markPeriodsInEffect(t.Forecasts, now)
 
 	return t
 }

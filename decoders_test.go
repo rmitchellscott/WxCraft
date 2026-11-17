@@ -24,11 +24,11 @@ var coverageThresholds = map[string]int{
 	"metar.station_mismatch":             0,
 	"metar.time_mismatch":                1,
 	"metar.body_unhandled":               162,
-	"metar.body_unrepresented":           466,
+	"metar.body_unrepresented":           32,
 	"metar.weather_not_weather":          0,
 	"metar.weather_missed":               0,
 	"metar.wind_mismatch":                0,
-	"metar.visibility_mismatch":          11,
+	"metar.visibility_mismatch":          0,
 	"metar.vertical_visibility_mismatch": 0,
 	"metar.cloud_mismatch":               0,
 	"metar.temperature_mismatch":         0,
@@ -37,7 +37,7 @@ var coverageThresholds = map[string]int{
 	"taf.station_mismatch":               0,
 	"taf.period_count_mismatch":          83,
 	"taf.weather_not_weather":            0,
-	"taf.unrepresented":                  9223,
+	"taf.unrepresented":                  9201,
 }
 
 var (
@@ -45,7 +45,7 @@ var (
 	testWindRegex         = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(?:G(\d{2,3}))?(KT|MPS|KMH)$`)
 	testCloudRegex        = regexp.MustCompile(`^(FEW|SCT|BKN|OVC|///)(\d{3}|///)?(CB|TCU|///)?$|^(SKC|CLR)$|^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
 	testVertVisRegex      = regexp.MustCompile(`^VV(\d{3})$`)
-	testTempRegex         = regexp.MustCompile(`^(M)?(\d{2})/(M)?(\d{2})$`)
+	testTempRegex         = regexp.MustCompile(`^(M)?(\d{1,2})/(M)?(\d{1,2})$`)
 	testPressureRegex     = regexp.MustCompile(`^([AQ])(\d{4})$`)
 	testIssueTimeRegex    = regexp.MustCompile(`^\d{6}Z$`)
 	testPeriodRegex       = regexp.MustCompile(`^\d{4}/\d{4}$`)
@@ -228,8 +228,8 @@ func collectStrings(v reflect.Value, set map[string]bool) {
 }
 
 func addMETARRenderings(metar METAR, set map[string]bool) {
-	if metar.VertVis > 0 {
-		set[fmt.Sprintf("VV%03d", metar.VertVis)] = true
+	if metar.VertVis != nil {
+		set[fmt.Sprintf("VV%03d", *metar.VertVis)] = true
 	}
 	if metar.VertVisMissing {
 		set["VV///"] = true
@@ -264,23 +264,25 @@ func addMETARRenderings(metar METAR, set map[string]bool) {
 			}
 		}
 	}
-	switch {
-	case metar.Pressure == 0 && metar.PressureUnit == "inHg":
-		set["A////"] = true
-	case metar.Pressure == 0 && metar.PressureUnit == "hPa":
-		set["Q////"] = true
-	}
-	switch metar.PressureUnit {
-	case "inHg":
-		set[fmt.Sprintf("A%04d", int(math.Round(metar.Pressure*100)))] = true
-	case "hPa":
-		set[fmt.Sprintf("Q%04d", int(metar.Pressure))] = true
+	for _, pressure := range []PressureReading{{metar.Pressure, metar.PressureUnit}, metar.SecondPressure} {
+		switch {
+		case pressure.Value == 0 && pressure.Unit == "inHg":
+			set["A////"] = true
+		case pressure.Value == 0 && pressure.Unit == "hPa":
+			set["Q////"] = true
+		}
+		switch pressure.Unit {
+		case "inHg":
+			set[fmt.Sprintf("A%04d", int(math.Round(pressure.Value*100)))] = true
+		case "hPa":
+			set[fmt.Sprintf("Q%04d", int(pressure.Value))] = true
+		}
 	}
 }
 
 func addForecastRenderings(period Forecast, set map[string]bool) {
-	if period.VertVis > 0 {
-		set[fmt.Sprintf("VV%03d", period.VertVis)] = true
+	if period.VertVis != nil {
+		set[fmt.Sprintf("VV%03d", *period.VertVis)] = true
 	}
 	if period.NSC {
 		set["NSC"] = true
@@ -293,15 +295,16 @@ func addForecastRenderings(period Forecast, set map[string]bool) {
 	}
 }
 
-// signedTemps renders whole Celsius as METAR text; 0 has two forms because M00 means just below zero
+// signedTemps renders whole Celsius as METAR text; 0 has two forms because M00 means just below
+// zero, and a few stations drop the leading zero, as in 24/5
 func signedTemps(celsius int) []string {
 	switch {
 	case celsius < 0:
-		return []string{fmt.Sprintf("M%02d", -celsius)}
+		return []string{fmt.Sprintf("M%02d", -celsius), fmt.Sprintf("M%d", -celsius)}
 	case celsius == 0:
-		return []string{"00", "M00"}
+		return []string{"00", "M00", "0", "M0"}
 	}
-	return []string{fmt.Sprintf("%02d", celsius)}
+	return []string{fmt.Sprintf("%02d", celsius), fmt.Sprintf("%d", celsius)}
 }
 
 var metarCoverageMetrics = []string{
@@ -414,7 +417,7 @@ func checkMETAR(line string, metar METAR, report *coverageReport) {
 
 	for _, token := range body {
 		if m := testVertVisRegex.FindStringSubmatch(token); m != nil {
-			if height, _ := strconv.Atoi(m[1]); height != metar.VertVis {
+			if height, _ := strconv.Atoi(m[1]); metar.VertVis == nil || height != *metar.VertVis {
 				report.add("metar.vertical_visibility_mismatch", tokenShape(token))
 			}
 			break

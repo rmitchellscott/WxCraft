@@ -134,7 +134,6 @@ var periodTypes = map[string]string{
 	"TEMPO": "Temporary",
 	"BECMG": "Becoming",
 	"INTER": "Intermittent",
-	"PROB":  "Probable",
 }
 
 // Icing intensity and type for the military 6IchhhT group (WMO code table 1734)
@@ -189,7 +188,7 @@ var (
 	visRegexDir       = regexp.MustCompile(`^(\d{4})([NESW]{1,2})$`)
 	cloudRegex        = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC|///)(\d{3}|///)?(CB|TCU|///)?$|^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
 	tempRegex         = regexp.MustCompile(`^(M?)(\d{1,2})/(M?)(\d{1,2})$`)
-	tempOnlyRegex     = regexp.MustCompile(`^(M?)(\d{2})/(//)?$`)
+	tempOnlyRegex     = regexp.MustCompile(`^(M?)(\d{1,2})/(//)?$`)
 	pressureRegex     = regexp.MustCompile(`^A(\d{4})$`)
 	validRegex        = regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
 	cavokRegex        = regexp.MustCompile(`^CAVOK$`)
@@ -264,9 +263,10 @@ type Remark struct {
 
 // SiteInfo represents the location information for a station
 type SiteInfo struct {
-	Name    string
-	State   string
-	Country string
+	Name      string
+	State     string
+	Country   string
+	Elevation *int // meters
 }
 
 // RunwayCondition represents a runway visual range group
@@ -303,6 +303,12 @@ type SeaState struct {
 	Raw         string
 }
 
+// PressureReading is a pressure group; a zero Value with a Unit means the group was reported missing
+type PressureReading struct {
+	Value float64
+	Unit  string // "hPa" or "inHg"
+}
+
 // METAR represents a decoded METAR weather report
 type METAR struct {
 	WeatherData
@@ -315,13 +321,14 @@ type METAR struct {
 	MinVisibility    string // Directional minimum visibility (e.g., "1500NE")
 	Weather          []string
 	Clouds           []Cloud
-	VertVis          int  // Vertical visibility in hundreds of feet
+	VertVis          *int // Vertical visibility in hundreds of feet; 0 means below 100 feet
 	VertVisMissing   bool // VV///: sky obscured, height not measured
 	Temperature      *int // Changed to pointer to represent missing value
 	DewPoint         *int // Using pointer to represent missing dew point
 	Pressure         float64
-	PressureUnit     string  // "hPa" or "inHg"
-	StationPressure  float64 // QFE in hPa, reported in the body by some South American stations
+	PressureUnit     string          // "hPa" or "inHg"
+	SecondPressure   PressureReading // a second QNH group, as in "Q1020 A3015"
+	StationPressure  float64         // QFE in hPa, reported in the body by some South American stations
 	Remarks          []Remark
 	RunwayConditions []RunwayCondition // Runway visual range
 	RunwayStates     []RunwayState     // Runway deposits, depth and braking
@@ -364,13 +371,14 @@ type Forecast struct {
 	NSW           bool // no significant weather
 	Clouds        []Cloud
 	NSC           bool // no significant cloud
-	VertVis       int  // Vertical visibility in hundreds of feet
+	VertVis       *int // Vertical visibility in hundreds of feet; 0 means below 100 feet
 	Pressure      float64
 	PressureUnit  string
 	Icing         []HazardLayer
 	Turbulence    []HazardLayer
 	Unhandled     []string
 	Raw           string // Raw text for this forecast period
+	InEffect      bool   // in effect at the reference time passed to DecodeTAF
 }
 
 // TAF represents a decoded Terminal Aerodrome Forecast

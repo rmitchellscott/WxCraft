@@ -16,6 +16,11 @@ func InHgToMillibars(inHg float64) float64 {
 	return inHg * 33.8639
 }
 
+// MillibarsToInHg converts pressure from millibars (hPa) to inches of mercury
+func MillibarsToInHg(millibars float64) float64 {
+	return millibars / 33.8639
+}
+
 // Calculate the relative time string
 func relativeTimeString(t time.Time) string {
 	now := time.Now().UTC()

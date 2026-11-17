@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,7 +33,7 @@ func formatVisibility(visibility string) string {
 		return ""
 	}
 
-	if visibility == "////" {
+	if visibility == "////" || visibility == "////SM" {
 		return "Not reported"
 	}
 
@@ -605,10 +606,12 @@ func FormatMETAR(m METAR) string {
 		sb.WriteString(formatVisibility(m.MinVisibility) + "\n")
 	}
 
+	derived := deriveMETAR(m)
+
 	// Vertical visibility - show if available
-	if m.VertVis > 0 {
+	if m.VertVis != nil {
 		labelColor.Fprint(&sb, "Vertical Visibility: ")
-		sb.WriteString(fmt.Sprintf("%s feet\n", formatNumberWithCommas(m.VertVis*100)))
+		sb.WriteString(formatVerticalVisibility(*m.VertVis) + "\n")
 	} else if m.VertVisMissing {
 		labelColor.Fprint(&sb, "Vertical Visibility: ")
 		sb.WriteString("Not reported\n")
@@ -666,31 +669,38 @@ func FormatMETAR(m METAR) string {
 		}
 	}
 
-	// Temperature with Fahrenheit conversion
-	if m.Temperature == nil {
-		// Case for missing temperature
-		labelColor.Fprint(&sb, "Temperature: ")
-		sb.WriteString("Not available\n")
-	} else {
-		tempF := CelsiusToFahrenheit(*m.Temperature)
-		labelColor.Fprint(&sb, "Temperature: ")
-		sb.WriteString(fmt.Sprintf("%d°C | %d°F\n", *m.Temperature, tempF))
+	if derived.ceilingKnown {
+		labelColor.Fprint(&sb, "Ceiling: ")
+		sb.WriteString(formatCeiling(derived.ceiling) + "\n")
+	}
+	if derived.flightCategory != "" {
+		labelColor.Fprint(&sb, "Flight Category: ")
+		sb.WriteString(derived.flightCategory + "\n")
 	}
 
-	// Dew point with Fahrenheit conversion
-	if m.DewPoint == nil {
-		// Case for missing dew point
-		labelColor.Fprint(&sb, "Dew Point: ")
-		sb.WriteString("Not available\n")
-	} else {
-		dewPointF := CelsiusToFahrenheit(*m.DewPoint)
-		labelColor.Fprint(&sb, "Dew Point: ")
-		sb.WriteString(fmt.Sprintf("%d°C | %d°F\n", *m.DewPoint, dewPointF))
+	labelColor.Fprint(&sb, "Temperature: ")
+	sb.WriteString(formatCelsius(derived.temperature, derived.tenths) + "\n")
+	labelColor.Fprint(&sb, "Dew Point: ")
+	sb.WriteString(formatCelsius(derived.dewPoint, derived.tenths) + "\n")
+
+	if derived.relativeHumidity != nil {
+		labelColor.Fprint(&sb, "Relative Humidity: ")
+		sb.WriteString(fmt.Sprintf("%.0f%%\n", *derived.relativeHumidity))
 	}
 
 	if m.Pressure > 0 || m.PressureUnit != "" {
 		labelColor.Fprint(&sb, "Pressure: ")
 		sb.WriteString(formatPressure(m.Pressure, m.PressureUnit) + "\n")
+	}
+
+	if m.SecondPressure.Unit != "" {
+		labelColor.Fprint(&sb, "Second Pressure Group: ")
+		sb.WriteString(formatPressure(m.SecondPressure.Value, m.SecondPressure.Unit) + "\n")
+	}
+
+	if derived.densityAltitude != nil {
+		labelColor.Fprint(&sb, "Density Altitude: ")
+		sb.WriteString(formatNumberWithCommas(*derived.densityAltitude) + " feet\n")
 	}
 
 	if m.StationPressure > 0 {
@@ -807,7 +817,7 @@ func FormatMETAR(m METAR) string {
 		sb.WriteString("\n")
 		sectionColor.Fprintln(&sb, "Trends:")
 		for i, trend := range m.Trends {
-			formatPeriod(&sb, i+1, trend, "onward")
+			formatPeriod(&sb, i+1, trend, "onward", nil)
 		}
 	}
 
@@ -917,8 +927,9 @@ func FormatTAF(t TAF) string {
 	if len(t.Forecasts) > 0 {
 		sb.WriteString("\n")
 		sectionColor.Fprintln(&sb, "Forecast Periods:")
+		skies := periodSkies(t.Forecasts)
 		for i, forecast := range t.Forecasts {
-			formatPeriod(&sb, i+1, forecast, "until end of forecast")
+			formatPeriod(&sb, i+1, forecast, "until end of forecast", &skies[i])
 		}
 	}
 
@@ -946,13 +957,17 @@ func FormatTAF(t TAF) string {
 }
 
 // formatPeriod writes a numbered TAF forecast period or METAR trend group. openEnded follows the
-// start time of a period that has no end time.
-func formatPeriod(sb *strings.Builder, number int, forecast Forecast, openEnded string) {
+// start time of a period that has no end time. sky, when not nil, is the visibility and sky in
+// force during the period, from which its ceiling and flight category are shown.
+func formatPeriod(sb *strings.Builder, number int, forecast Forecast, openEnded string, sky *skyCondition) {
 	periodType, ok := periodTypes[forecast.Type]
 	if !ok {
 		periodType = forecast.Type
 	}
-	if forecast.Probability > 0 {
+	switch {
+	case forecast.Type == "PROB":
+		periodType = fmt.Sprintf("%d%% Probability", forecast.Probability)
+	case forecast.Probability > 0:
 		periodType = fmt.Sprintf("%d%% Probability, %s", forecast.Probability, periodType)
 	}
 
@@ -976,6 +991,9 @@ func formatPeriod(sb *strings.Builder, number int, forecast Forecast, openEnded 
 	case !forecast.To.IsZero():
 		writeTime(" until ", forecast.To)
 	}
+	if forecast.InEffect {
+		sb.WriteString(" (in effect)")
+	}
 	sb.WriteString("\n")
 
 	writeLine := func(label, value string) {
@@ -993,8 +1011,8 @@ func formatPeriod(sb *strings.Builder, number int, forecast Forecast, openEnded 
 	if forecast.MinVisibility != "" {
 		writeLine("Minimum Visibility", formatVisibility(forecast.MinVisibility))
 	}
-	if forecast.VertVis > 0 {
-		writeLine("Vertical Visibility", formatNumberWithCommas(forecast.VertVis*100)+" feet")
+	if forecast.VertVis != nil {
+		writeLine("Vertical Visibility", formatVerticalVisibility(*forecast.VertVis))
 	}
 
 	switch {
@@ -1009,6 +1027,15 @@ func formatPeriod(sb *strings.Builder, number int, forecast Forecast, openEnded 
 		writeLine("Clouds", capitalizeFirst(formatClouds(forecast.Clouds)))
 	case forecast.NSC:
 		writeLine("Clouds", "No significant clouds")
+	}
+
+	if sky != nil {
+		if ceiling, ok := sky.ceiling(); ok {
+			writeLine("Ceiling", formatCeiling(ceiling))
+		}
+		if category := sky.flightCategory(); category != "" {
+			writeLine("Flight Category", category)
+		}
 	}
 
 	if forecast.PressureUnit != "" {
@@ -1064,9 +1091,39 @@ func formatPressure(pressure float64, unit string) string {
 	case pressure == 0:
 		return "Not available"
 	case unit == "hPa":
-		return fmt.Sprintf("%.1f hPa | %.2f inHg", pressure, pressure/33.8639)
+		return fmt.Sprintf("%.1f hPa | %.2f inHg", pressure, MillibarsToInHg(pressure))
 	}
 	return fmt.Sprintf("%.2f inHg | %.1f hPa", pressure, InHgToMillibars(pressure))
+}
+
+func formatVerticalVisibility(hundredsOfFeet int) string {
+	if hundredsOfFeet == 0 {
+		return "Below 100 feet"
+	}
+	return formatNumberWithCommas(hundredsOfFeet*100) + " feet"
+}
+
+func formatCeiling(c ceiling) string {
+	if c.none {
+		return "None"
+	}
+	if c.feet == 0 {
+		return "Below 100 feet"
+	}
+	return formatNumberWithCommas(c.feet) + " feet"
+}
+
+// formatCelsius shows a temperature with its Fahrenheit conversion, to tenths of a degree Celsius
+// when it comes from the T remark group
+func formatCelsius(celsius *float64, tenths bool) string {
+	if celsius == nil {
+		return "Not available"
+	}
+	decimals := 0
+	if tenths {
+		decimals = 1
+	}
+	return fmt.Sprintf("%.*f°C | %d°F", decimals, *celsius, int(math.Round(*celsius*9/5+32)))
 }
 
 func formatHazardLayer(layer HazardLayer, intensities map[string]string) string {

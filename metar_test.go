@@ -92,8 +92,11 @@ func TestMETARRunwayStateAndRVR(t *testing.T) {
 Wind: From 330° at 5 meters per second
 Visibility: Unlimited visibility (greater than 10 kilometers)
 Clouds: Overcast at 800 feet
+Ceiling: 800 feet
+Flight Category: IFR
 Temperature: -2°C | 28°F
 Dew Point: -2°C | 28°F
+Relative Humidity: 100%
 Pressure: 1010.0 hPa | 29.83 inHg
 
 Runway Visual Range:
@@ -217,6 +220,7 @@ Wind: Not reported (variation not reported)
 Visibility: Not reported
 Weather: Not reported, recent weather not reported
 Clouds: Broken clouds at 800 feet (type not reported), clouds at 1,500 feet (coverage not reported), cumulonimbus (coverage and height not reported), clouds (coverage, height and type not reported), broken clouds (height not reported), few clouds at 1,500 feet (type not reported)
+Ceiling: 800 feet
 Temperature: Not available
 Dew Point: Not available
 Pressure: Not available
@@ -293,8 +297,11 @@ Wind: Calm
 Visibility: 10 statute miles
 Weather: Light rain
 Clouds: Broken clouds below 100 feet, overcast at 1,200 feet
+Ceiling: Below 100 feet
+Flight Category: LIFR
 Temperature: -1°C | 30°F
 Dew Point: -1°C | 30°F
+Relative Humidity: 100%
 Pressure: 30.01 inHg | 1016.3 hPa
 `
 	assert.Equal(t, expected, formatWithoutTime(m))
@@ -383,4 +390,72 @@ func TestMETARRemarksWithoutBody(t *testing.T) {
 	assert.NotPanics(t, func() { DecodeMETAR("KXYZ RMK AO2", metarTestReference) })
 	m := DecodeMETAR("KXYZ 121651Z RMK AO2", metarTestReference)
 	assert.Len(t, m.Remarks, 1)
+}
+
+func TestMETARSecondPressureGroup(t *testing.T) {
+	m := DecodeMETAR("LGAV 080750Z 36012KT 9999 FEW030 15/08 Q1020 A3015", metarTestReference)
+	assert.Equal(t, 1020.0, m.Pressure)
+	assert.Equal(t, "hPa", m.PressureUnit)
+	assert.Equal(t, PressureReading{Value: 30.15, Unit: "inHg"}, m.SecondPressure)
+	assert.Empty(t, m.Unhandled)
+	assert.Contains(t, formatWithoutTime(m), "Pressure: 1020.0 hPa | 30.12 inHg\nSecond Pressure Group: 30.15 inHg | 1021.0 hPa\n")
+
+	missing := DecodeMETAR("LGAV 080750Z 36012KT 9999 FEW030 15/08 Q1020 A////", metarTestReference)
+	assert.Equal(t, PressureReading{Unit: "inHg"}, missing.SecondPressure)
+	assert.Contains(t, formatWithoutTime(missing), "Second Pressure Group: Not available\n")
+}
+
+func TestMETARSecondUndirectedVisibilityIsMinimum(t *testing.T) {
+	m := DecodeMETAR("EDDV 080720Z AUTO 09007KT 9999 2500 BR NCD 03/00 Q1017 NOSIG", metarTestReference)
+	assert.Equal(t, "9999", m.Visibility)
+	assert.Equal(t, "2500", m.MinVisibility)
+	assert.Empty(t, m.Unhandled)
+	assert.Contains(t, formatWithoutTime(m), "Visibility: Unlimited visibility (greater than 10 kilometers)\nMinimum Visibility: 2,500 meters\n")
+}
+
+func TestMETARVerticalVisibilityAtSurface(t *testing.T) {
+	m := DecodeMETAR("KMWN 080658Z 28077G88KT 0SM -SN FZFG BLSN VV000 M18/M18 RMK PK WND 28098/07", metarTestReference)
+	require.NotNil(t, m.VertVis)
+	assert.Equal(t, 0, *m.VertVis)
+	assert.False(t, m.VertVisMissing)
+
+	formatted := formatWithoutTime(m)
+	assert.Contains(t, formatted, "Vertical Visibility: Below 100 feet\n")
+	assert.Contains(t, formatted, "Ceiling: Below 100 feet\nFlight Category: LIFR\n")
+
+	missing := DecodeMETAR("KXYZ 080755Z AUTO 14011KT 1/4SM FG VV/// 12/10 A3001", metarTestReference)
+	assert.Nil(t, missing.VertVis)
+	assert.True(t, missing.VertVisMissing)
+	assert.Contains(t, formatWithoutTime(missing), "Vertical Visibility: Not reported\n")
+
+	absent := DecodeMETAR("KXYZ 080755Z 14011KT 10SM CLR 12/10 A3001", metarTestReference)
+	assert.Nil(t, absent.VertVis)
+}
+
+func TestMETARSingleDigitTemperatures(t *testing.T) {
+	tests := []struct {
+		raw         string
+		temperature *int
+		dewPoint    *int
+	}{
+		{"DNKA 080700Z 03004KT CAVOK 24/5 Q1014 NOSIG", ptr.To(24), ptr.To(5)},
+		{"VOHY 080830Z 07005KT 6000 NSC 36/1 Q1010 NOSIG", ptr.To(36), ptr.To(1)},
+		{"KXYZ 080755Z 14011KT 10SM CLR 5/M3 A3001", ptr.To(5), ptr.To(-3)},
+		{"KXYZ 080755Z 14011KT 10SM CLR M5/ A3001", ptr.To(-5), nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.raw, func(t *testing.T) {
+			m := DecodeMETAR(tt.raw, metarTestReference)
+			assert.Equal(t, tt.temperature, m.Temperature)
+			assert.Equal(t, tt.dewPoint, m.DewPoint)
+			assert.Empty(t, m.Unhandled)
+		})
+	}
+}
+
+func TestMETARMissingStatuteMileVisibility(t *testing.T) {
+	m := DecodeMETAR("KAXA 080755Z AUTO 31008KT ////SM CLR M02/M04 A3012 RMK AO2 VISNO", metarTestReference)
+	assert.Equal(t, "////SM", m.Visibility)
+	assert.Empty(t, m.Unhandled)
+	assert.Contains(t, formatWithoutTime(m), "Visibility: Not reported\n")
 }

@@ -100,7 +100,7 @@ func TestFormatTAF_ShowsProbabilityOnEveryPeriodType(t *testing.T) {
 
 	formatted := FormatTAF(taf)
 	assert.Contains(t, formatted, "30% Probability, Temporary")
-	assert.Contains(t, formatted, "40% Probability, Probable")
+	assert.Contains(t, formatted, "40% Probability 2025")
 }
 
 func TestDecodeTAF_InterGroups(t *testing.T) {
@@ -300,10 +300,12 @@ Valid: 2025-03-08 08:00 UTC to 2025-03-09 14:00 UTC
 
 Forecast Periods:
 
-1. Base Forecast 2025-03-08 08:00 UTC to 2025-03-09 14:00 UTC
+1. Base Forecast 2025-03-08 08:00 UTC to 2025-03-09 14:00 UTC (in effect)
    Wind: From 350° at 12 knots, gusting to 20 knots
    Visibility: Unlimited visibility (greater than 10 kilometers)
    Clouds: Broken clouds at 1,500 feet
+   Ceiling: 1,500 feet
+   Flight Category: MVFR
    Pressure: 29.98 inHg | 1015.2 hPa
    Icing: Light icing in cloud from 2,000 feet to 6,000 feet
 
@@ -311,6 +313,8 @@ Forecast Periods:
    Wind: From 340° at 12 knots
    Visibility: Unlimited visibility (greater than 10 kilometers)
    Clouds: Few clouds at 25,000 feet
+   Ceiling: None
+   Flight Category: VFR
    Pressure: 30.03 inHg | 1016.9 hPa
    Wind Shear: At 2,000 feet: From 240° at 40 knots
    Turbulence: Occasional moderate turbulence in clear air from the surface to 9,000 feet

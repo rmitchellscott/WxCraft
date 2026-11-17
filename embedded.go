@@ -12,7 +12,7 @@ var embeddedFiles embed.FS
 // Station represents a weather station from the embedded database
 type StationData struct {
 	Country  string  `json:"country"`
-	Elev     int     `json:"elev"`
+	Elev     *int    `json:"elev"`
 	FAAId    string  `json:"faaId"`
 	IATAId   string  `json:"iataId"`
 	ICAOId   string  `json:"icaoId"`
@@ -53,9 +53,10 @@ func LoadEmbeddedStationInfo(stationCode string) (SiteInfo, error) {
 			countryName := GetCountryName(countryCode)
 
 			return SiteInfo{
-				Name:    station.Site,
-				State:   station.State,
-				Country: countryName, // Use the full country name
+				Name:      station.Site,
+				State:     station.State,
+				Country:   countryName,
+				Elevation: station.Elev,
 			}, nil
 		}
 	}

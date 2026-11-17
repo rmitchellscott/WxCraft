@@ -1,11 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -13,12 +13,6 @@ import (
 const userAgent = "WxCraft"
 
 var httpClient = &http.Client{Timeout: 10 * time.Second}
-
-var (
-	siteNameRegex    = regexp.MustCompile(`Site:\s+(.+)`)
-	siteStateRegex   = regexp.MustCompile(`State:\s+(.+)`)
-	siteCountryRegex = regexp.MustCompile(`Country:\s+(.+)`)
-)
 
 func httpGet(url string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
@@ -68,33 +62,28 @@ func FetchTAF(stationCode string) (string, error) {
 func FetchSiteInfo(stationCode string) (SiteInfo, error) {
 	defaultSiteInfo := SiteInfo{Name: stationCode}
 
-	text, err := fetchData("https://aviationweather.gov/api/data/stationinfo?ids=%s", stationCode, "site info")
+	text, err := fetchData("https://aviationweather.gov/api/data/stationinfo?ids=%s&format=json", stationCode, "site info")
 	if err != nil {
 		return defaultSiteInfo, err
 	}
 
-	siteInfo := SiteInfo{
-		Name:  firstSubmatch(siteNameRegex, text),
-		State: firstSubmatch(siteStateRegex, text),
+	var stations []StationData
+	if err := json.Unmarshal([]byte(text), &stations); err != nil {
+		return defaultSiteInfo, fmt.Errorf("error parsing site info: %w", err)
 	}
-
-	country := firstSubmatch(siteCountryRegex, text)
-	if len(country) == 2 {
-		country = GetCountryName(country)
-	}
-	siteInfo.Country = country
-
-	if siteInfo.Name == "" {
+	if len(stations) == 0 || stations[0].Site == "" {
 		return defaultSiteInfo, fmt.Errorf("could not extract site name from response")
 	}
 
-	return siteInfo, nil
-}
-
-func firstSubmatch(re *regexp.Regexp, text string) string {
-	matches := re.FindStringSubmatch(text)
-	if len(matches) < 2 {
-		return ""
+	station := stations[0]
+	country := station.Country
+	if len(country) == 2 {
+		country = GetCountryName(country)
 	}
-	return strings.TrimSpace(matches[1])
+	return SiteInfo{
+		Name:      station.Site,
+		State:     station.State,
+		Country:   country,
+		Elevation: station.Elev,
+	}, nil
 }
