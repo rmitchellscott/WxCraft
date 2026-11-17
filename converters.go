@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"time"
 )
 
 // CelsiusToFahrenheit converts temperature from Celsius to Fahrenheit
 func CelsiusToFahrenheit(celsius int) int {
-	return (celsius * 9 / 5) + 32
+	return int(math.Round(float64(celsius)*9/5 + 32))
 }
 
 // InHgToMillibars converts pressure from inches of mercury to millibars (hPa)

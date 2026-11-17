@@ -2,6 +2,7 @@ package main
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -269,24 +270,14 @@ func DecodeTAF(raw string) TAF {
 	return t
 }
 
-// isWeatherCode checks if a string contains any weather codes
+// isWeatherCode reports whether s is a present or recent weather group
 func isWeatherCode(s string) bool {
-	// Don't match cloud patterns as weather
-	if strings.HasPrefix(s, "SKC") ||
-		strings.HasPrefix(s, "CLR") ||
-		strings.HasPrefix(s, "FEW") ||
-		strings.HasPrefix(s, "SCT") ||
-		strings.HasPrefix(s, "BKN") ||
-		strings.HasPrefix(s, "OVC") {
+	matches := weatherGroupRegex.FindStringSubmatch(s)
+	if matches == nil {
 		return false
 	}
-
-	for code := range weatherCodes {
-		if strings.Contains(s, code) {
-			return true
-		}
-	}
-	return false
+	descriptor, phenomena := matches[4], matches[5]
+	return phenomena != "" || descriptor == "TS" || descriptor == "SH"
 }
 
 // isVisibilityInMeters checks if a string is a visibility value in meters
@@ -324,12 +315,22 @@ func DecodeMETAR(raw string) METAR {
 	m := METAR{WeatherData: WeatherData{Raw: raw}}
 	parts := strings.Fields(raw)
 
-	if len(parts) < 2 {
+	stationIndex := 0
+	if len(parts) > 0 && (parts[0] == "METAR" || parts[0] == "SPECI") {
+		m.ReportType = parts[0]
+		stationIndex++
+	}
+	if stationIndex < len(parts) && parts[stationIndex] == "COR" {
+		m.SpecialCodes = append(m.SpecialCodes, "COR")
+		stationIndex++
+	}
+
+	if len(parts) < stationIndex+2 {
 		return m
 	}
 
 	// Station code
-	m.Station = parts[0]
+	m.Station = parts[stationIndex]
 
 	// Initialize default site info
 	m.SiteInfo = SiteInfo{
@@ -339,10 +340,12 @@ func DecodeMETAR(raw string) METAR {
 	}
 
 	// Time
-	if timeRegex.MatchString(parts[1]) {
-		if parsedTime, err := parseTime(parts[1]); err == nil {
+	bodyStart := stationIndex + 1
+	if timeRegex.MatchString(parts[bodyStart]) {
+		if parsedTime, err := parseTime(parts[bodyStart]); err == nil {
 			m.Time = parsedTime
 		}
+		bodyStart++
 	}
 
 	// Find the RMK section, BECMG section, and TEMPO section if they exist
@@ -379,7 +382,7 @@ func DecodeMETAR(raw string) METAR {
 
 	// THIS IS GROSS, I DON'T LIKE IT
 	// Special handling for split wind shear tokens
-	for i := 2; i < endIndex-1; i++ {
+	for i := bodyStart; i < endIndex-1; i++ {
 		// Handle "WS ALL RWY" pattern
 		if i+2 < endIndex && parts[i] == "WS" && parts[i+1] == "ALL" && parts[i+2] == "RWY" {
 			// Found the three-token pattern for wind shear
@@ -406,7 +409,7 @@ func DecodeMETAR(raw string) METAR {
 		}
 	}
 
-	for i := 2; i < endIndex; i++ {
+	for i := bodyStart; i < endIndex; i++ {
 		part := parts[i]
 
 		// Skip tokens that were already processed
@@ -416,6 +419,19 @@ func DecodeMETAR(raw string) METAR {
 
 		// Special conditions (AUTO, COR, etc.)
 		if specialRegex.MatchString(part) {
+			m.SpecialCodes = append(m.SpecialCodes, part)
+			continue
+		}
+
+		// US automated stations report a missing group as a bare "M"
+		if part == "M" {
+			if !slices.Contains(m.SpecialCodes, part) {
+				m.SpecialCodes = append(m.SpecialCodes, part)
+			}
+			continue
+		}
+
+		if militaryColorRegex.MatchString(part) {
 			m.SpecialCodes = append(m.SpecialCodes, part)
 			continue
 		}
@@ -449,6 +465,18 @@ func DecodeMETAR(raw string) METAR {
 			continue
 		}
 
+		if part == "////" || part == "////SM" {
+			if m.Visibility == "" {
+				m.Visibility = "////"
+			}
+			continue
+		}
+
+		if m.Visibility != "" && visRegexDir.MatchString(part) {
+			m.MinVisibility = part
+			continue
+		}
+
 		// Standard visibility check for statute miles
 		if visRegexM.MatchString(part) {
 			m.Visibility = part
@@ -471,32 +499,25 @@ func DecodeMETAR(raw string) METAR {
 			continue
 		}
 
-		// Runway Visual Range (RVR) and Runway Conditions
-		if runwayClearedRegex.MatchString(part) || runwayCondRegex.MatchString(part) {
-			// Parse the runway condition
-			cond := parseRunwayCondition(part)
-			m.RunwayConditions = append(m.RunwayConditions, cond)
-			// Add to legacy RVR field for compatibility
-			m.RVR = append(m.RVR, part)
+		if part == "VV///" {
+			m.VertVisMissing = true
 			continue
 		}
 
-		// Basic RVR format (legacy)
-		if rvrRegex.MatchString(part) {
-			m.RVR = append(m.RVR, part)
+		// Runway state must be tried before RVR: R24/290050 also matches the RVR pattern
+		if runwayStateRegex.MatchString(part) || runwayClearedRegex.MatchString(part) || runwaySnowClosedRegex.MatchString(part) {
+			m.RunwayStates = append(m.RunwayStates, parseRunwayState(part))
 			continue
 		}
 
-		// Weather phenomena
-		if isWeatherCode(part) {
+		if runwayCondRegex.MatchString(part) || rvrMissingRegex.MatchString(part) {
+			m.RunwayConditions = append(m.RunwayConditions, parseRunwayCondition(part))
+			continue
+		}
+
+		// "//" and "RE//": present or recent weather not observable by the automated station
+		if isWeatherCode(part) || part == "//" || part == "RE//" {
 			m.Weather = append(m.Weather, part)
-			continue
-		}
-
-		// Wind shear
-		if strings.Contains(part, "WS") {
-			ws := parseWindShear(part)
-			m.WindShear = append(m.WindShear, ws)
 			continue
 		}
 
@@ -538,6 +559,21 @@ func DecodeMETAR(raw string) METAR {
 			// Leave DewPoint as nil to indicate missing value
 			continue
 		}
+
+		if part == "/////" {
+			continue
+		}
+
+		if pressureMissingRegex.MatchString(part) {
+			if !pressureFound {
+				m.PressureUnit = "hPa"
+				if part[0] == 'A' {
+					m.PressureUnit = "inHg"
+				}
+				pressureFound = true
+			}
+			continue
+		}
 		// Pressure in Q format (hPa/millibars) - only process if we haven't found pressure yet
 		if len(part) > 1 && part[0] == 'Q' {
 			if pressureFound {
@@ -564,6 +600,11 @@ func DecodeMETAR(raw string) METAR {
 			m.Pressure = float64(pressureInt) / 100.0
 			m.PressureUnit = "inHg"
 			pressureFound = true
+			continue
+		}
+
+		if seaStateRegex.MatchString(part) {
+			m.SeaStates = append(m.SeaStates, parseSeaState(part))
 			continue
 		}
 

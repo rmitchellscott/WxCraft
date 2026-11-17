@@ -32,6 +32,10 @@ func formatVisibility(visibility string) string {
 		return ""
 	}
 
+	if visibility == "////" {
+		return "Not reported"
+	}
+
 	// CAVOK (Ceiling And Visibility OK)
 	if visibility == "CAVOK" {
 		return "Greater than 10 km"
@@ -88,7 +92,8 @@ func formatVisibility(visibility string) string {
 			return "Unlimited visibility in the " + direction + " direction"
 		}
 
-		return meters + " meters in the " + direction + " direction"
+		metersValue, _ := strconv.Atoi(meters)
+		return formatNumberWithCommas(metersValue) + " meters in the " + direction + " direction"
 	}
 	// Handle visibility with NDV (No Directional Variation)
 	if ndvRegex.MatchString(visibility) {
@@ -116,19 +121,30 @@ func formatVisibility(visibility string) string {
 
 // formatWind converts a Wind struct to a human-readable string
 func formatWind(wind Wind) string {
-	// if wind.Speed == 0 && wind.Direction == "" {
-	// 	return ""
-	// }
-
-	if wind.Speed == nil && wind.Gust == 0 {
+	if wind.Direction == "" && wind.Speed == nil {
 		return ""
 	}
 
-	windStr := ""
-	if wind.Direction == "VRB" {
-		windStr += "Variable"
-	} else if wind.Direction != "" && wind.Direction != "0" {
-		windStr += fmt.Sprintf("From %s°", wind.Direction)
+	var direction string
+	switch wind.Direction {
+	case "VRB":
+		direction = "Variable"
+	case "///":
+		direction = "Direction not reported"
+	case "", "0":
+	default:
+		direction = fmt.Sprintf("From %s°", wind.Direction)
+	}
+
+	if wind.Speed == nil {
+		if wind.Direction == "///" {
+			return "Not reported"
+		}
+		return direction + ", speed not reported"
+	}
+
+	if *wind.Speed == 0 && wind.Gust == 0 {
+		return "Calm"
 	}
 
 	unitLabel := "knots"
@@ -136,19 +152,20 @@ func formatWind(wind Wind) string {
 		unitLabel = "meters per second"
 	}
 
-	if wind.Speed != nil && *wind.Speed > 0 {
-		windStr += fmt.Sprintf(" at %d %s", *wind.Speed, unitLabel)
-		if wind.Gust > 0 {
-			windStr += fmt.Sprintf(", gusting to %d %s", wind.Gust, unitLabel)
-		}
-	} else {
-		windStr += fmt.Sprintf(" %d %s", *wind.Speed, unitLabel)
-		if wind.Gust > 0 {
-			windStr += fmt.Sprintf(", gusting to %d %s", wind.Gust, unitLabel)
-		}
+	windStr := fmt.Sprintf("%d %s", *wind.Speed, unitLabel)
+	if direction != "" {
+		windStr = direction + " at " + windStr
+	}
+	if wind.Gust > 0 {
+		windStr += fmt.Sprintf(", gusting to %d %s", wind.Gust, unitLabel)
 	}
 
 	return windStr
+}
+
+// formatAltitudeWindShear describes a WShhh/dddffKT wind shear group
+func formatAltitudeWindShear(ws WindShear) string {
+	return fmt.Sprintf("At %s feet: %s", formatNumberWithCommas(ws.Altitude*100), formatWind(ws.Wind))
 }
 
 // formatClouds converts a slice of Cloud structs to a human-readable string
@@ -164,17 +181,40 @@ func formatClouds(clouds []Cloud) string {
 			coverStr = c
 		}
 
-		cloudDesc := coverStr
-		if cloud.Height > 0 {
-			cloudDesc = fmt.Sprintf("%s at %s feet", coverStr, formatNumberWithCommas(cloud.Height))
+		typeDesc := cloud.Type
+		if t, ok := cloudTypes[cloud.Type]; ok {
+			typeDesc = t
 		}
 
-		if cloud.Type != "" {
-			typeDesc := cloud.Type
-			if t, ok := cloudTypes[cloud.Type]; ok {
-				typeDesc = t
+		var notReported []string
+		coverageMissing := cloud.Coverage == "///"
+		if coverageMissing {
+			coverStr = "clouds"
+			if cloud.Type != "" && cloud.Type != "///" {
+				coverStr = typeDesc
 			}
+			notReported = append(notReported, "coverage")
+		}
+
+		cloudDesc := coverStr
+		isClear := cloud.Coverage == "CLR" || cloud.Coverage == "SKC"
+		switch {
+		case cloud.HeightMissing:
+			notReported = append(notReported, "height")
+		case cloud.Height > 0:
+			cloudDesc = fmt.Sprintf("%s at %s feet", coverStr, formatNumberWithCommas(cloud.Height))
+		case !isClear:
+			cloudDesc = coverStr + " below 100 feet"
+		}
+
+		if cloud.Type == "///" {
+			notReported = append(notReported, "type")
+		} else if cloud.Type != "" && !coverageMissing {
 			cloudDesc = fmt.Sprintf("%s (%s)", cloudDesc, typeDesc)
+		}
+
+		if len(notReported) > 0 {
+			cloudDesc = fmt.Sprintf("%s (%s not reported)", cloudDesc, joinWithAnd(notReported))
 		}
 
 		cloudStrs = append(cloudStrs, cloudDesc)
@@ -183,24 +223,6 @@ func formatClouds(clouds []Cloud) string {
 	return strings.Join(cloudStrs, ", ")
 }
 
-// // formatWeather converts a slice of weather strings to a human-readable format
-// func formatWeather(weather []string) string {
-// 	if len(weather) == 0 {
-// 		return ""
-// 	}
-
-// 	var weatherStrs []string
-// 	for _, wx := range weather {
-// 		if desc, ok := weatherDescriptions[wx]; ok {
-// 			weatherStrs = append(weatherStrs, desc)
-// 		} else {
-// 			weatherStrs = append(weatherStrs, wx)
-// 		}
-// 	}
-
-//		return strings.Join(weatherStrs, ", ")
-//	}
-//
 // WeatherCode represents a weather code and its properties
 type WeatherCode struct {
 	Description string
@@ -239,6 +261,13 @@ func formatWeather(weather []string) string {
 
 // formatWeatherElement handles a single weather element, with or without combined codes
 func formatWeatherElement(code string) string {
+	switch code {
+	case "//":
+		return "not reported"
+	case "RE//":
+		return "recent weather not reported"
+	}
+
 	// First check if this is a simple code we already know
 	if wc, ok := weatherCodes[code]; ok {
 		return wc.Description
@@ -359,14 +388,146 @@ func formatSpecialCodes(codes []string) string {
 
 	var descriptions []string
 	for _, code := range codes {
-		if desc, ok := specialConditions[code]; ok {
-			descriptions = append(descriptions, desc)
-		} else {
-			descriptions = append(descriptions, code)
-		}
+		descriptions = append(descriptions, describeSpecialCode(code))
 	}
 
 	return strings.Join(descriptions, ", ")
+}
+
+func describeSpecialCode(code string) string {
+	if desc, ok := specialConditions[code]; ok {
+		return desc
+	}
+
+	if matches := militaryColorRegex.FindStringSubmatch(code); matches != nil {
+		desc := "military color state " + militaryColorStates[matches[2]]
+		if matches[1] == "BLACK" {
+			desc += ", airfield unusable for non-weather reasons"
+		}
+		return fmt.Sprintf("%s (%s)", desc, code)
+	}
+
+	return code
+}
+
+func formatRunwayState(state RunwayState) string {
+	var label string
+	switch state.Runway {
+	case "":
+		label = "Aerodrome"
+	case "88":
+		label = "All runways"
+	case "99":
+		label = "Runway (last report repeated)"
+	default:
+		label = "Runway " + state.Runway
+	}
+
+	if state.SnowClosed {
+		return label + ": Closed due to snow"
+	}
+
+	var details []string
+	if state.Cleared {
+		details = append(details, "contamination cleared")
+		if state.Friction != "//" {
+			details = append(details, describeRunwayFriction(state.Friction))
+		}
+		return label + ": " + capitalizeFirst(strings.Join(details, ", "))
+	}
+
+	if strings.Trim(state.Deposit+state.Extent+state.Depth+state.Friction, "/") == "" {
+		return label + ": Not reported"
+	}
+
+	if desc, ok := runwayDeposits[state.Deposit]; ok {
+		details = append(details, desc)
+	} else {
+		details = append(details, "deposit not reported")
+	}
+
+	if desc, ok := runwayContaminationExtents[state.Extent]; ok {
+		details = append(details, desc)
+	} else {
+		details = append(details, "extent not reported")
+	}
+
+	details = append(details, describeRunwayDepositDepth(state.Depth), describeRunwayFriction(state.Friction))
+
+	return label + ": " + capitalizeFirst(strings.Join(details, ", "))
+}
+
+// describeRunwayDepositDepth decodes the eReR depth digits of a runway state group (WMO code table 1079)
+func describeRunwayDepositDepth(depth string) string {
+	value, err := strconv.Atoi(depth)
+	switch {
+	case err != nil:
+		return "depth not significant or not measurable"
+	case value == 0:
+		return "depth less than 1 mm"
+	case value <= 90:
+		return fmt.Sprintf("depth %d mm", value)
+	case value >= 92 && value <= 97:
+		return fmt.Sprintf("depth %d cm", (value-90)*5)
+	case value == 98:
+		return "depth 40 cm or more"
+	case value == 99:
+		return "runway not operational"
+	}
+	return "depth code " + depth
+}
+
+// describeRunwayFriction decodes the BRBR friction digits of a runway state group (WMO code table 0366)
+func describeRunwayFriction(friction string) string {
+	brakingActions := map[int]string{
+		91: "braking action poor",
+		92: "braking action medium to poor",
+		93: "braking action medium",
+		94: "braking action medium to good",
+		95: "braking action good",
+		99: "braking action unreliable",
+	}
+
+	value, err := strconv.Atoi(friction)
+	switch {
+	case err != nil:
+		return "braking action not reported"
+	case value <= 90:
+		return fmt.Sprintf("friction coefficient 0.%02d", value)
+	}
+	if desc, ok := brakingActions[value]; ok {
+		return desc
+	}
+	return "friction code " + friction
+}
+
+func formatSeaState(sea SeaState) string {
+	var details []string
+
+	if sea.Temperature != nil {
+		details = append(details, fmt.Sprintf("surface temperature %d°C | %d°F", *sea.Temperature, CelsiusToFahrenheit(*sea.Temperature)))
+	} else {
+		details = append(details, "surface temperature not reported")
+	}
+
+	switch {
+	case sea.WaveHeight != nil:
+		details = append(details, fmt.Sprintf("significant wave height %.1f m", float64(*sea.WaveHeight)/10))
+	case sea.State != "":
+		details = append(details, "sea state "+seaStates[sea.State])
+	default:
+		details = append(details, "sea state not reported")
+	}
+
+	return capitalizeFirst(strings.Join(details, ", "))
+}
+
+// joinWithAnd joins items as "a", "a and b", or "a, b and c"
+func joinWithAnd(items []string) string {
+	if len(items) <= 1 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
 }
 
 // getMetarAgeColor returns the appropriate color based on METAR age
@@ -427,7 +588,9 @@ func FormatMETAR(m METAR) string {
 		sb.WriteString(windStr)
 
 		// Add wind variation if available
-		if m.WindVariation != "" {
+		if strings.Contains(m.WindVariation, "/") {
+			sb.WriteString(" (variation not reported)")
+		} else if m.WindVariation != "" {
 			// Split the variation at the 'V' character
 			parts := strings.Split(m.WindVariation, "V")
 			if len(parts) == 2 {
@@ -447,10 +610,18 @@ func FormatMETAR(m METAR) string {
 		sb.WriteString(visibilityDesc + "\n")
 	}
 
+	if m.MinVisibility != "" {
+		labelColor.Fprint(&sb, "Minimum Visibility: ")
+		sb.WriteString(formatVisibility(m.MinVisibility) + "\n")
+	}
+
 	// Vertical visibility - show if available
 	if m.VertVis > 0 {
 		labelColor.Fprint(&sb, "Vertical Visibility: ")
 		sb.WriteString(fmt.Sprintf("%s feet\n", formatNumberWithCommas(m.VertVis*100)))
+	} else if m.VertVisMissing {
+		labelColor.Fprint(&sb, "Vertical Visibility: ")
+		sb.WriteString("Not reported\n")
 	}
 
 	// Check if we have only CLR clouds
@@ -543,6 +714,14 @@ func FormatMETAR(m METAR) string {
 			pressureHpa := InHgToMillibars(m.Pressure)
 			sb.WriteString(fmt.Sprintf("%.2f inHg | %.1f hPa\n", m.Pressure, pressureHpa))
 		}
+	} else if m.PressureUnit != "" {
+		labelColor.Fprint(&sb, "Pressure: ")
+		sb.WriteString("Not available\n")
+	}
+
+	for _, sea := range m.SeaStates {
+		labelColor.Fprint(&sb, "Sea: ")
+		sb.WriteString(formatSeaState(sea) + "\n")
 	}
 
 	// Wind Shear
@@ -563,34 +742,20 @@ func FormatMETAR(m METAR) string {
 					sb.WriteString("  Runway windshear\n") // Fallback
 				}
 			} else if ws.Type == "ALT" {
-				var directionStr string
-				if ws.Wind.Direction == "VRB" {
-					directionStr = "Variable"
-				} else {
-					directionStr = fmt.Sprintf("From %s°", ws.Wind.Direction)
-				}
-
-				sb.WriteString(fmt.Sprintf("  At %d feet: %s at %d %s\n",
-					ws.Altitude*100,
-					directionStr,
-					ws.Wind.Speed,
-					ws.Wind.Unit))
+				sb.WriteString("  " + formatAltitudeWindShear(ws) + "\n")
 			}
 		}
 	}
 
-	// Runway Conditions and Visual Range
 	if len(m.RunwayConditions) > 0 {
 		sb.WriteString("\n")
-		sectionColor.Fprintln(&sb, "Runway Conditions:")
+		sectionColor.Fprintln(&sb, "Runway Visual Range:")
 		for _, cond := range m.RunwayConditions {
 			// Format the runway number
 			sb.WriteString("  Runway " + cond.Runway + ": ")
 
-			// Handle cleared runways
-			if cond.Cleared {
-				sb.WriteString(fmt.Sprintf("Cleared of deposits %d minutes ago", cond.ClearedTime))
-				sb.WriteString("\n")
+			if cond.Missing {
+				sb.WriteString("Not reported\n")
 				continue
 			}
 
@@ -649,46 +814,13 @@ func FormatMETAR(m METAR) string {
 
 			sb.WriteString("\n")
 		}
-	} else if len(m.RVR) > 0 {
-		// Legacy RVR display (only used if no RunwayConditions are available)
+	}
+
+	if len(m.RunwayStates) > 0 {
 		sb.WriteString("\n")
-		sectionColor.Fprintln(&sb, "Runway Visual Range:")
-		for _, rvr := range m.RVR {
-			matches := rvrRegex.FindStringSubmatch(rvr)
-			if matches != nil {
-				runway := matches[1]
-				visibility := matches[2]
-				trend := matches[3]
-
-				// Format the runway number
-				sb.WriteString("  Runway " + runway + ": ")
-
-				// Format visibility with indicators
-				if strings.HasPrefix(visibility, "P") {
-					sb.WriteString("More than " + visibility[1:] + " meters")
-				} else if strings.HasPrefix(visibility, "M") {
-					sb.WriteString("Less than " + visibility[1:] + " meters")
-				} else {
-					sb.WriteString(visibility + " meters")
-				}
-
-				// Add trend if available
-				if trend != "" {
-					trendMap := map[string]string{
-						"D": " (decreasing)",
-						"U": " (increasing)",
-						"N": " (no change)",
-					}
-					if desc, ok := trendMap[trend]; ok {
-						sb.WriteString(desc)
-					}
-				}
-
-				sb.WriteString("\n")
-			} else {
-				// Fallback for unmatched RVR format
-				sb.WriteString("  " + rvr + "\n")
-			}
+		sectionColor.Fprintln(&sb, "Runway State:")
+		for _, state := range m.RunwayStates {
+			sb.WriteString("  " + formatRunwayState(state) + "\n")
 		}
 	}
 
@@ -697,10 +829,7 @@ func FormatMETAR(m METAR) string {
 		sb.WriteString("\n")
 		sectionColor.Fprintln(&sb, "Special Conditions:")
 		for _, code := range m.SpecialCodes {
-			desc := code
-			if val, ok := specialConditions[code]; ok {
-				desc = val
-			}
+			desc := describeSpecialCode(code)
 
 			// Add bullet and capitalize first letter
 			sb.WriteString("  • ")
@@ -876,18 +1005,7 @@ func FormatTAF(t TAF) string {
 						sb.WriteString(fmt.Sprintf("%s all runways", ws.Phase))
 					}
 				} else if ws.Type == "ALT" {
-					var directionStr string
-					if ws.Wind.Direction == "VRB" {
-						directionStr = "Variable"
-					} else {
-						directionStr = fmt.Sprintf("From %s°", ws.Wind.Direction)
-					}
-
-					sb.WriteString(fmt.Sprintf("At %d feet: %s at %d %s",
-						ws.Altitude*100,
-						directionStr,
-						ws.Wind.Speed,
-						ws.Wind.Unit))
+					sb.WriteString(formatAltitudeWindShear(ws))
 				}
 				sb.WriteString("\n")
 			}
@@ -920,49 +1038,4 @@ func formatNumberWithCommas(n int) string {
 	}
 
 	return result
-}
-
-// FormatSiteInfo returns a formatted string with the site information
-func (m METAR) FormatSiteInfo() string {
-	parts := []string{}
-
-	if m.SiteInfo.Name != "" {
-		parts = append(parts, m.SiteInfo.Name)
-	}
-
-	if m.SiteInfo.State != "" {
-		parts = append(parts, m.SiteInfo.State)
-	}
-
-	if m.SiteInfo.Country != "" {
-		parts = append(parts, m.SiteInfo.Country)
-	}
-
-	if len(parts) == 0 {
-		return m.Station // Fallback to station code if no site info
-	}
-
-	return strings.Join(parts, ", ")
-}
-
-func (t TAF) FormatSiteInfo() string {
-	parts := []string{}
-
-	if t.SiteInfo.Name != "" {
-		parts = append(parts, t.SiteInfo.Name)
-	}
-
-	if t.SiteInfo.State != "" {
-		parts = append(parts, t.SiteInfo.State)
-	}
-
-	if t.SiteInfo.Country != "" {
-		parts = append(parts, t.SiteInfo.Country)
-	}
-
-	if len(parts) == 0 {
-		return t.Station // Fallback to station code if no site info
-	}
-
-	return strings.Join(parts, ", ")
 }

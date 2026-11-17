@@ -63,8 +63,10 @@ func parseWind(windStr string) Wind {
 			Direction: matches[1],
 			Unit:      "KT",
 		}
-		speed, _ := strconv.Atoi(matches[2])
-		wind.Speed = &speed
+		if matches[2] != "//" {
+			speed, _ := strconv.Atoi(matches[2])
+			wind.Speed = &speed
+		}
 		if matches[4] != "" {
 			wind.Gust, _ = strconv.Atoi(matches[4])
 		}
@@ -80,8 +82,10 @@ func parseWind(windStr string) Wind {
 			Unit:      "MPS",
 		}
 
-		speed, _ := strconv.Atoi(matches[2])
-		wind.Speed = &speed
+		if matches[2] != "//" {
+			speed, _ := strconv.Atoi(matches[2])
+			wind.Speed = &speed
+		}
 		if matches[4] != "" {
 			wind.Gust, _ = strconv.Atoi(matches[4])
 		}
@@ -104,25 +108,90 @@ func parseWindVariation(varStr string) string {
 	return varStr
 }
 
-// parseCloud parses a cloud string in the format "CCCHHH" or "CCCHHHTTT"
+// parseCloud parses a cloud string in the format "CCCHHH", "CCCHHHTTT" or "CCCTTTHHH"
 func parseCloud(cloudStr string) Cloud {
 	matches := cloudRegex.FindStringSubmatch(cloudStr)
 	if matches == nil {
 		return Cloud{}
 	}
 
-	cloud := Cloud{
-		Coverage: matches[1],
-		Type:     matches[3],
+	coverage, height, cloudType := matches[1], matches[2], matches[3]
+	if coverage == "" {
+		coverage, cloudType, height = matches[4], matches[5], matches[6]
 	}
 
-	// Only try to parse height if it exists
-	if matches[2] != "" && len(matches[2]) > 0 {
-		height, _ := strconv.Atoi(matches[2])
-		cloud.Height = height * 100
+	cloud := Cloud{
+		Coverage: coverage,
+		Type:     cloudType,
+	}
+
+	switch {
+	case height == "///":
+		cloud.HeightMissing = true
+	case height == "" && coverage != "SKC" && coverage != "CLR":
+		cloud.HeightMissing = true
+	case height != "":
+		hundredsOfFeet, _ := strconv.Atoi(height)
+		cloud.Height = hundredsOfFeet * 100
 	}
 
 	return cloud
+}
+
+// parseRunwayState parses a runway state group such as "R24/290050", "R88/CLRD//" or "R/SNOCLO"
+func parseRunwayState(stateStr string) RunwayState {
+	state := RunwayState{Raw: stateStr}
+
+	if matches := runwaySnowClosedRegex.FindStringSubmatch(stateStr); matches != nil {
+		state.Runway = matches[2]
+		state.SnowClosed = true
+		return state
+	}
+
+	if matches := runwayClearedRegex.FindStringSubmatch(stateStr); matches != nil {
+		state.Runway = matches[1]
+		state.Cleared = true
+		state.Friction = matches[2]
+		return state
+	}
+
+	if matches := runwayStateRegex.FindStringSubmatch(stateStr); matches != nil {
+		state.Runway = matches[1]
+		state.Deposit = matches[2]
+		state.Extent = matches[3]
+		state.Depth = matches[4]
+		state.Friction = matches[5]
+	}
+
+	return state
+}
+
+// parseSeaState parses a sea surface group such as "W15/S2", "W///S9" or "W12/H7"
+func parseSeaState(seaStr string) SeaState {
+	sea := SeaState{Raw: seaStr}
+	matches := seaStateRegex.FindStringSubmatch(seaStr)
+	if matches == nil {
+		return sea
+	}
+
+	if matches[1] != "//" {
+		temperature, _ := strconv.Atoi(strings.TrimPrefix(matches[1], "M"))
+		if strings.HasPrefix(matches[1], "M") {
+			temperature = -temperature
+		}
+		sea.Temperature = &temperature
+	}
+
+	if matches[3] != "" && matches[3] != "/" {
+		sea.State = matches[3]
+	}
+
+	if matches[4] != "" && !strings.HasPrefix(matches[4], "/") {
+		waveHeight, _ := strconv.Atoi(matches[4])
+		sea.WaveHeight = &waveHeight
+	}
+
+	return sea
 }
 
 // parseWindShear parses a wind shear string into a WindShear struct
@@ -184,21 +253,12 @@ func parseRunwayCondition(condStr string) RunwayCondition {
 	// Create a RunwayCondition with the raw string
 	cond := RunwayCondition{Raw: condStr}
 
-	// First check for CLRD (cleared) format
-	if runwayClearedRegex.MatchString(condStr) {
-		matches := runwayClearedRegex.FindStringSubmatch(condStr)
-		if matches == nil || len(matches) < 3 {
-			return cond
-		}
-
-		cond.Runway = matches[1]
-		cond.Cleared = true
-		clearedTime, _ := strconv.Atoi(matches[2])
-		cond.ClearedTime = clearedTime
+	if matches := rvrMissingRegex.FindStringSubmatch(condStr); matches != nil {
+		cond.Runway = strings.Trim(matches[1], "/")
+		cond.Missing = true
 		return cond
 	}
 
-	// Then try the standard format
 	matches := runwayCondRegex.FindStringSubmatch(condStr)
 	// Needs at least runway and visibility value
 	if matches == nil || len(matches) < 4 {

@@ -48,7 +48,7 @@ var weatherCodes = map[string]WeatherCode{
 // Common cloud coverage mapping
 var cloudCoverage = map[string]string{
 	"SKC": "sky clear",
-	"CLR": "slear",
+	"CLR": "clear",
 	"FEW": "few clouds",
 	"SCT": "scattered clouds",
 	"BKN": "broken clouds",
@@ -71,6 +71,55 @@ var specialConditions = map[string]string{
 	"NCD":   "no clouds detected",
 	"CAVOK": "ceiling and visibility OK",
 	"RTD":   "routine delayed (late) observation",
+	"M":     "a group was not reported",
+}
+
+// Military airfield color states, best to worst
+var militaryColorStates = map[string]string{
+	"BLU":  "blue",
+	"WHT":  "white",
+	"GRN":  "green",
+	"YLO":  "yellow",
+	"YLO1": "yellow 1",
+	"YLO2": "yellow 2",
+	"AMB":  "amber",
+	"RED":  "red",
+}
+
+// Runway state group deposit types (WMO code table 0919)
+var runwayDeposits = map[string]string{
+	"0": "clear and dry",
+	"1": "damp",
+	"2": "wet or water patches",
+	"3": "rime or frost",
+	"4": "dry snow",
+	"5": "wet snow",
+	"6": "slush",
+	"7": "ice",
+	"8": "compacted or rolled snow",
+	"9": "frozen ruts or ridges",
+}
+
+// Runway state group contamination extent (WMO code table 0519)
+var runwayContaminationExtents = map[string]string{
+	"1": "10% or less covered",
+	"2": "11-25% covered",
+	"5": "26-50% covered",
+	"9": "51-100% covered",
+}
+
+// Sea state codes (WMO code table 3700)
+var seaStates = map[string]string{
+	"0": "calm (glassy)",
+	"1": "calm (rippled)",
+	"2": "smooth",
+	"3": "slight",
+	"4": "moderate",
+	"5": "rough",
+	"6": "very rough",
+	"7": "high",
+	"8": "very high",
+	"9": "phenomenal",
 }
 
 // TAF forecast types
@@ -86,33 +135,41 @@ var forecastTypes = map[string]string{
 // Commonly used regular expressions
 var (
 	timeRegex         = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})Z$`)
-	windRegex         = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$|^(0+)(G\d{2})?KT$`)
-	windRegexMPS      = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?MPS$|^(0+)(G\d{2})?MPS$`)
-	windVarRegex      = regexp.MustCompile(`^(\d{3})V(\d{3})$`)
+	windRegex         = regexp.MustCompile(`^(VRB|\d{3}|///)(\d{2,3}|//)(G(\d{2,3}))?KT$|^(0+)(G\d{2})?KT$`)
+	windRegexMPS      = regexp.MustCompile(`^(VRB|\d{3}|///)(\d{2,3}|//)(G(\d{2,3}))?MPS$|^(0+)(G\d{2})?MPS$`)
+	windVarRegex      = regexp.MustCompile(`^(\d{3}|///)V(\d{3}|///)$`)
 	windShearAltRegex = regexp.MustCompile(`^WS(\d{3})/(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
 	windShearRwyRegex = regexp.MustCompile(`^WS(\s+(TKOF|LDG|ALL)\s+RWY(\d{2}[LCR]?)?|\s+R(\d{2}[LCR]?)?)$`)
 	visRegexM         = regexp.MustCompile(`^M?(\d+(?:/\d+)?)SM$`)
 	visRegexP         = regexp.MustCompile(`^(\d+(?:/\d+)?|M|P)(\d+)SM$`)
 	visRegexNum       = regexp.MustCompile(`^\d{4}$`)
 	visRegexDir       = regexp.MustCompile(`^(\d{4})([NESW]{1,2})$`)
-	cloudRegex        = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC)(\d{3})?(CB|TCU)?$`)
+	cloudRegex        = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC|///)(\d{3}|///)?(CB|TCU|///)?$|^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
 	tempRegex         = regexp.MustCompile(`^(M?)(\d{1,2})/(M?)(\d{1,2})$`)
-	tempOnlyRegex     = regexp.MustCompile(`^(M?)(\d{2})/$`)
+	tempOnlyRegex     = regexp.MustCompile(`^(M?)(\d{2})/(//)?$`)
 	pressureRegex     = regexp.MustCompile(`^A(\d{4})$`)
 	validRegex        = regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
 	probRegex         = regexp.MustCompile(`^PROB(\d{2})$`)
 	cavokRegex        = regexp.MustCompile(`^CAVOK$`)
-	rvrRegex          = regexp.MustCompile(`^R(\d{2}[CLR]?)/([MP]?\d+)([DNU])?$`)
 	// Enhanced runway condition regex that handles variable values, peak values and trend indicator
 	// Updated to correctly capture trend indicator both with and without a preceding slash
 	runwayCondRegex = regexp.MustCompile(`^R(\d{2}[CLR]?)/(([MP]?\d+)(V([MP]?\d+))?(FT)?)(/(U|D|N)|U|D|N)?$`)
 	// Regex for cleared runway condition (e.g., R24C/CLRD62)
-	runwayClearedRegex = regexp.MustCompile(`^R(\d{2}[CLR]?)/CLRD(\d{2})$`)
+	runwayClearedRegex = regexp.MustCompile(`^R(\d{2}[CLR]?)/CLRD(\d{2}|//)$`)
 	vvRegex            = regexp.MustCompile(`^VV(\d{3})$`)
 	ndvRegex           = regexp.MustCompile(`^(\d{4,5})NDV$`)
 	eWindRegex         = regexp.MustCompile(`^E(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
-	extCloudRegex      = regexp.MustCompile(`^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
 	specialRegex       = regexp.MustCompile(`^(NOSIG|AUTO|COR|CCA|NSC|NCD|RTD)$`)
+)
+
+var (
+	weatherGroupRegex     = regexp.MustCompile(`^(RE)?([-+]?(VC)?)(MI|PR|BC|DR|BL|SH|TS|FZ)?((DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS)*)$`)
+	pressureMissingRegex  = regexp.MustCompile(`^[AQ]////$`)
+	rvrMissingRegex       = regexp.MustCompile(`^R(\d{2}[CLR]?|//)/////$`)
+	runwayStateRegex      = regexp.MustCompile(`^R(\d{2}[CLR]?)/([\d/])([\d/])([\d/]{2})([\d/]{2})$`)
+	runwaySnowClosedRegex = regexp.MustCompile(`^(R(\d{2}[CLR]?)?/)?SNOCLO$`)
+	seaStateRegex         = regexp.MustCompile(`^W(M?\d{2}|//)/(S([\d/])|H(\d{1,3}|/{1,3})|//?)$`)
+	militaryColorRegex    = regexp.MustCompile(`^(BLACK)?(BLU|WHT|GRN|YLO[12]?|AMB|RED)\+?$`)
 )
 
 // WeatherData contains common fields for different weather reports
@@ -142,9 +199,10 @@ type WindShear struct {
 
 // Cloud represents cloud information in a weather report
 type Cloud struct {
-	Coverage string
-	Height   int
-	Type     string // CB, TCU, etc.
+	Coverage      string // "///" when not reported
+	Height        int
+	HeightMissing bool
+	Type          string // CB, TCU, or "///" when not reported
 }
 
 // Remark represents a decoded remark from the RMK section
@@ -160,38 +218,62 @@ type SiteInfo struct {
 	Country string
 }
 
-// RunwayCondition represents runway visual range and surface conditions information
+// RunwayCondition represents a runway visual range group
 type RunwayCondition struct {
-	Runway      string // Runway identifier (e.g., "21", "24C", "27")
-	Visibility  int    // Visibility in feet or meters
-	VisMin      int    // For variable visibility - minimum value
-	VisMax      int    // For variable visibility - maximum value
-	Trend       string // Trend indicator: "U" (upward), "D" (downward), or "N" (no change)
-	Unit        string // "FT" for feet or "" for meters
-	Prefix      string // Prefix if any: "P" (more than) or "M" (less than)
-	Cleared     bool   // Whether the runway is cleared
-	ClearedTime int    // Time when runway was cleared (in minutes) for CLRD format
-	Raw         string // Original raw string
+	Runway     string // Runway identifier (e.g., "21", "24C", "27")
+	Visibility int    // Visibility in feet or meters
+	VisMin     int    // For variable visibility - minimum value
+	VisMax     int    // For variable visibility - maximum value
+	Trend      string // Trend indicator: "U" (upward), "D" (downward), or "N" (no change)
+	Unit       string // "FT" for feet or "" for meters
+	Prefix     string // Prefix if any: "P" (more than) or "M" (less than)
+	Missing    bool   // RVR not reported (R24/////)
+	Raw        string // Original raw string
+}
+
+// RunwayState represents a runway state group (deposits, depth and braking).
+// Code fields hold the raw WMO digits, "/" or "//" when not reported.
+type RunwayState struct {
+	Runway     string // "88" means all runways, "99" repeats the last report
+	Deposit    string
+	Extent     string
+	Depth      string
+	Friction   string
+	Cleared    bool // CLRD: contamination has ceased; Friction still applies
+	SnowClosed bool
+	Raw        string
+}
+
+// SeaState represents a sea surface temperature and sea state or wave height group
+type SeaState struct {
+	Temperature *int
+	State       string // WMO code table 3700 digit, "" when not reported
+	WaveHeight  *int   // Significant wave height in decimeters
+	Raw         string
 }
 
 // METAR represents a decoded METAR weather report
 type METAR struct {
 	WeatherData
+	ReportType       string // "METAR" or "SPECI" when the report starts with one
 	SiteInfo         SiteInfo
 	Wind             Wind
 	WindShear        []WindShear
 	WindVariation    string // Wind direction variation (e.g., "360V040")
 	Visibility       string
+	MinVisibility    string // Directional minimum visibility (e.g., "1500NE")
 	Weather          []string
 	Clouds           []Cloud
 	VertVis          int  // Vertical visibility in hundreds of feet
+	VertVisMissing   bool // VV///: sky obscured, height not measured
 	Temperature      *int // Changed to pointer to represent missing value
 	DewPoint         *int // Using pointer to represent missing dew point
 	Pressure         float64
 	PressureUnit     string // "hPa" or "inHg"
 	Remarks          []Remark
-	RunwayConditions []RunwayCondition // Detailed runway visual range and conditions
-	RVR              []string          // Legacy RVR field (maintained for compatibility)
+	RunwayConditions []RunwayCondition // Runway visual range
+	RunwayStates     []RunwayState     // Runway deposits, depth and braking
+	SeaStates        []SeaState        // Sea surface temperature and sea state (W group)
 	SpecialCodes     []string          // Special codes like AUTO, NOSIG, etc.
 	Unhandled        []string
 }
