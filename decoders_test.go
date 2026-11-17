@@ -37,7 +37,7 @@ var coverageThresholds = map[string]int{
 	"taf.station_mismatch":               0,
 	"taf.period_count_mismatch":          83,
 	"taf.weather_not_weather":            0,
-	"taf.unrepresented":                  8393,
+	"taf.unrepresented":                  9223,
 }
 
 var (

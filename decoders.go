@@ -83,7 +83,25 @@ func DecodeTAF(raw string, now time.Time) TAF {
 		t.Forecasts = append(t.Forecasts, current)
 	}
 
+	var plainLanguage []string
+	forecastEnd := len(body)
 	for j := 0; j < len(body); {
+		if forecastEnd == len(body) && tafPlainLanguageStarts[body[j]] {
+			forecastEnd = j
+		}
+		if j >= forecastEnd {
+			if matches := tafTemperatureRegex.FindStringSubmatch(body[j]); matches != nil {
+				if temperature, ok := parseTemperatureForecast(matches, reference); ok {
+					t.Temperatures = append(t.Temperatures, temperature)
+					j++
+					continue
+				}
+			}
+			plainLanguage = append(plainLanguage, body[j])
+			j++
+			continue
+		}
+
 		if next, consumed, ok := parseChangeGroup(body, j, reference); ok {
 			finishPeriod(j)
 			if next.Type == "FM" {
@@ -99,6 +117,16 @@ func DecodeTAF(raw string, now time.Time) TAF {
 		}
 
 		part := body[j]
+		if part == "WND" {
+			note := min(j+2, len(body))
+			if note+1 < len(body) && body[note] == "AFT" {
+				note += 2
+			}
+			current.Unhandled = append(current.Unhandled, body[j:note]...)
+			j = note
+			continue
+		}
+
 		if j+1 < len(body) && tafVisWholeRegex.MatchString(part) && tafVisFractionRegex.MatchString(body[j+1]) {
 			current.Visibility = part + " " + body[j+1]
 			j += 2
@@ -118,7 +146,10 @@ func DecodeTAF(raw string, now time.Time) TAF {
 		}
 		j++
 	}
-	finishPeriod(len(body))
+	finishPeriod(forecastEnd)
+	if len(plainLanguage) > 0 {
+		t.Remarks = strings.TrimSpace(strings.Join(plainLanguage, " ") + " " + t.Remarks)
+	}
 
 	endOpenPeriod(t.Forecasts, t.ValidTo)
 

@@ -122,6 +122,17 @@ var seaStates = map[string]string{
 	"9": "phenomenal",
 }
 
+// Words that open the plain-language notes US military TAFs append after the forecast groups,
+// such as "LAST NO AMDS AFT 0807 NXT 1005", whose 4-digit times would otherwise read as visibility
+var tafPlainLanguageStarts = map[string]bool{
+	"LAST":      true,
+	"NXT":       true,
+	"NEXT":      true,
+	"AUTOMATED": true,
+	"AMD":       true,
+	"COR":       true,
+}
+
 // TAF forecast types
 var forecastTypes = map[string]string{
 	"FM":     "from",

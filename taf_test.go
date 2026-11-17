@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
@@ -69,6 +70,37 @@ func TestDecodeTAF_MilitaryGroups(t *testing.T) {
 		{Kind: "MAX", Celsius: -3, At: utc(2025, time.March, 9, 0, 0), Raw: "TXM03/0900Z"},
 		{Kind: "MIN", Celsius: -15, At: utc(2025, time.March, 9, 13, 0), Raw: "TNM15/0913Z"},
 	}, taf.Temperatures)
+}
+
+func TestDecodeTAF_MilitaryPlainLanguageTrailer(t *testing.T) {
+	taf := DecodeTAF("TAF AMD KGUR 080745Z 0807/0911 VRB06KT 9999 FEW020 QNH3006INS TX07/0823Z LAST NO AMDS AFT 0807 NXT 1005 TNM15/0813Z", tafTestNow)
+
+	require.Len(t, taf.Forecasts, 1)
+	assert.Equal(t, "9999", taf.Forecasts[0].Visibility)
+	assert.Empty(t, taf.Forecasts[0].Unhandled)
+	assert.Equal(t, "LAST NO AMDS AFT 0807 NXT 1005", taf.Remarks)
+	require.Len(t, taf.Temperatures, 2)
+	assert.Equal(t, -15, taf.Temperatures[1].Celsius)
+}
+
+func TestDecodeTAF_MilitaryWindNoteKeepsForecastWind(t *testing.T) {
+	taf := DecodeTAF("TAF KVBG 072315Z 0723/0905 34012G20KT 9999 SCT015 QNH3010INS WND 02006KT AFT 0801 BECMG 0802/0803 36009KT 9999 SKC WND 270V360", tafTestNow)
+
+	require.Len(t, taf.Forecasts, 2)
+	assert.Equal(t, "340", taf.Forecasts[0].Wind.Direction)
+	assert.Equal(t, []string{"WND", "02006KT", "AFT", "0801"}, taf.Forecasts[0].Unhandled)
+	assert.Equal(t, "BECMG", taf.Forecasts[1].Type)
+	assert.Empty(t, taf.Forecasts[1].WindVariation)
+	assert.Equal(t, []string{"WND", "270V360"}, taf.Forecasts[1].Unhandled)
+}
+
+func TestFormatTAF_ShowsProbabilityOnEveryPeriodType(t *testing.T) {
+	color.NoColor = true
+	taf := DecodeTAF("TAF LFTH 080748Z 0807/0903 09015KT 9999 SCT018 PROB30 TEMPO 0809/0812 BKN014 PROB40 0814/0816 4000 RA", tafTestNow)
+
+	formatted := FormatTAF(taf)
+	assert.Contains(t, formatted, "30% Probability, Temporary")
+	assert.Contains(t, formatted, "40% Probability, Probable")
 }
 
 func TestDecodeTAF_InterGroups(t *testing.T) {

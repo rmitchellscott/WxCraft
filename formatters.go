@@ -924,11 +924,15 @@ func FormatTAF(t TAF) string {
 			periodType = "Temporary"
 		case forecast.Type == "BECMG":
 			periodType = "Becoming"
-		case strings.HasPrefix(forecast.Type, "PROB"):
-			// Handle PROB forecasts with the probability value
-			periodType = fmt.Sprintf("%d%% Probability", forecast.Probability)
+		case forecast.Type == "INTER":
+			periodType = "Intermittent"
+		case forecast.Type == "PROB":
+			periodType = "Probable"
 		default:
 			periodType = forecast.Type
+		}
+		if forecast.Probability > 0 {
+			periodType = fmt.Sprintf("%d%% Probability, %s", forecast.Probability, periodType)
 		}
 
 		// Period header with number
