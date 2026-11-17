@@ -269,7 +269,7 @@ func isVerticalVisibility(s string) bool {
 }
 
 // DecodeMETAR decodes a raw METAR string into a METAR struct with site information
-func DecodeMETAR(raw string) METAR {
+func DecodeMETAR(raw string, now time.Time) METAR {
 	m := METAR{WeatherData: WeatherData{Raw: raw}}
 	parts := strings.Fields(raw)
 
@@ -300,7 +300,7 @@ func DecodeMETAR(raw string) METAR {
 	// Time
 	bodyStart := stationIndex + 1
 	if timeRegex.MatchString(parts[bodyStart]) {
-		if parsedTime, err := parseTime(parts[bodyStart], time.Now().UTC()); err == nil {
+		if parsedTime, err := parseTime(parts[bodyStart], now); err == nil {
 			m.Time = parsedTime
 		}
 		bodyStart++

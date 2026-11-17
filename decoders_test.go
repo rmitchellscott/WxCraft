@@ -1,10 +1,11 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
-	"iter"
-	"os"
-	"path/filepath"
+	"math"
+	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,673 +13,525 @@ import (
 	"time"
 
 	"github.com/rmitchellscott/WxCraft/testdata"
-	"github.com/stretchr/testify/assert"
 )
 
-// createTestLogDirectory creates a directory for test logs if it doesn't exist
-func createTestLogDirectory(t *testing.T) string {
-	// Create logs directory
-	logDir := "test-logs"
-	err := os.MkdirAll(logDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create test log directory: %v", err)
-	}
-	return logDir
+// Every corpus report was issued on day 08, so any reference shortly after it decodes to the same month.
+var corpusReference = time.Date(2025, time.March, 10, 0, 0, 0, 0, time.UTC)
+
+// coverageThresholds caps each corpus coverage count. A count above its cap fails the test;
+// a count below it is logged so the cap can be lowered once a fix lands.
+var coverageThresholds = map[string]int{
+	"metar.station_mismatch":             0,
+	"metar.time_mismatch":                1,
+	"metar.body_unhandled":               186,
+	"metar.body_unrepresented":           2727,
+	"metar.weather_not_weather":          0,
+	"metar.weather_missed":               0,
+	"metar.wind_mismatch":                0,
+	"metar.visibility_mismatch":          11,
+	"metar.vertical_visibility_mismatch": 0,
+	"metar.cloud_mismatch":               0,
+	"metar.temperature_mismatch":         0,
+	"metar.pressure_mismatch":            0,
+	"metar.remark_unknown":               910,
+	"taf.station_mismatch":               0,
+	"taf.period_count_mismatch":          83,
+	"taf.weather_not_weather":            0,
+	"taf.unrepresented":                  8393,
 }
 
-// logTestFailures writes the failure information to a log file
-func logTestFailures(t *testing.T, testName string, content string) string {
-	logDir := createTestLogDirectory(t)
+var (
+	testWeatherGroupRegex = regexp.MustCompile(`^(?:RE)?(?:[+-]?(?:VC)?(?:MI|PR|BC|DR|BL|SH|TS|FZ)?(?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS)*|//)$`)
+	testWindRegex         = regexp.MustCompile(`^(VRB|\d{3})(\d{2,3})(?:G(\d{2,3}))?(KT|MPS|KMH)$`)
+	testCloudRegex        = regexp.MustCompile(`^(FEW|SCT|BKN|OVC|///)(\d{3}|///)?(CB|TCU|///)?$|^(SKC|CLR)$|^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
+	testVertVisRegex      = regexp.MustCompile(`^VV(\d{3})$`)
+	testTempRegex         = regexp.MustCompile(`^(M)?(\d{2})/(M)?(\d{2})$`)
+	testPressureRegex     = regexp.MustCompile(`^([AQ])(\d{4})$`)
+	testIssueTimeRegex    = regexp.MustCompile(`^\d{6}Z$`)
+	testPeriodRegex       = regexp.MustCompile(`^\d{4}/\d{4}$`)
+	testFromRegex         = regexp.MustCompile(`^FM\d{6}$`)
+	testProbRegex         = regexp.MustCompile(`^PROB\d{2}$`)
+	testDigitRegex        = regexp.MustCompile(`\d`)
+)
 
-	// Create log filename with timestamp to avoid overwrites
-	timestamp := time.Now().Format("20060102-150405")
-	logFileName := fmt.Sprintf("%s_%s.log", testName, timestamp)
-	logFilePath := filepath.Join(logDir, logFileName)
+var testHeaderKeywords = []string{"TAF", "METAR", "SPECI", "AMD", "COR", "RTD"}
 
-	err := os.WriteFile(logFilePath, []byte(content), 0644)
-	if err != nil {
-		t.Errorf("Failed to write to log file: %v", err)
-		return ""
-	}
-
-	return logFilePath
+type coverageReport struct {
+	counts map[string]int
+	shapes map[string]map[string]int
 }
 
-func decodeMETARList(t *testing.T) iter.Seq2[string, METAR] {
-	return func(yield func(string, METAR) bool) {
-		scanner := testdata.METAR(t)
-		for scanner.Scan() {
-			if strings.Contains(scanner.Text(), "//") {
+func newCoverageReport() *coverageReport {
+	return &coverageReport{counts: map[string]int{}, shapes: map[string]map[string]int{}}
+}
+
+func (c *coverageReport) add(metric, key string) {
+	c.counts[metric]++
+	if c.shapes[metric] == nil {
+		c.shapes[metric] = map[string]int{}
+	}
+	c.shapes[metric][key]++
+}
+
+// check logs every metric with its most common shapes and fails only on counts above threshold
+func (c *coverageReport) check(t *testing.T, metrics []string) {
+	t.Helper()
+	for _, metric := range metrics {
+		count := c.counts[metric]
+		threshold, ok := coverageThresholds[metric]
+		if !ok {
+			t.Errorf("%s: no coverage threshold set (count %d)", metric, count)
+			continue
+		}
+
+		t.Logf("%-34s %6d  (threshold %d, %d distinct)", metric, count, threshold, len(c.shapes[metric]))
+		for _, shape := range topShapes(c.shapes[metric], 15) {
+			t.Logf("    %6d  %s", c.shapes[metric][shape], shape)
+		}
+
+		switch {
+		case count > threshold:
+			t.Errorf("%s regressed: %d > threshold %d", metric, count, threshold)
+		case count < threshold:
+			t.Logf("%s improved: lower its threshold from %d to %d", metric, threshold, count)
+		}
+	}
+}
+
+func topShapes(shapes map[string]int, n int) []string {
+	keys := make([]string, 0, len(shapes))
+	for key := range shapes {
+		keys = append(keys, key)
+	}
+	slices.SortFunc(keys, func(a, b string) int {
+		return cmp.Or(cmp.Compare(shapes[b], shapes[a]), cmp.Compare(a, b))
+	})
+	return keys[:min(n, len(keys))]
+}
+
+func tokenShape(token string) string {
+	return testDigitRegex.ReplaceAllString(token, "9")
+}
+
+func isTestWeatherGroup(token string) bool {
+	switch token {
+	case "", "+", "-", "VC", "RE", "-VC", "+VC":
+		return false
+	}
+	return testWeatherGroupRegex.MatchString(token)
+}
+
+// headerLength returns how many leading fields are report keywords, station, issue time and validity
+func headerLength(fields []string) int {
+	i := 0
+	for i < len(fields) && slices.Contains(testHeaderKeywords, fields[i]) {
+		i++
+	}
+	i++
+	if i < len(fields) && testIssueTimeRegex.MatchString(fields[i]) {
+		i++
+	}
+	if i < len(fields) && testPeriodRegex.MatchString(fields[i]) {
+		i++
+	}
+	return min(i, len(fields))
+}
+
+func expectedStation(fields []string) string {
+	for _, field := range fields {
+		if !slices.Contains(testHeaderKeywords, field) {
+			return field
+		}
+	}
+	return ""
+}
+
+func indexOrLen(fields []string, stop ...string) int {
+	for i, field := range fields {
+		if slices.Contains(stop, field) {
+			return i
+		}
+	}
+	return len(fields)
+}
+
+// representedTokens collects the strings a decoded report carries in its exported fields, plus
+// wind, cloud, vertical visibility, temperature and pressure rendered back to their raw form.
+// A raw token missing from the set was dropped by the decoder. The report's own Raw text,
+// Unhandled and Remarks are left out so they cannot vouch for a token.
+func representedTokens(decoded any) map[string]bool {
+	set := map[string]bool{}
+	collectStrings(reflect.ValueOf(decoded), set)
+	return set
+}
+
+var (
+	windType  = reflect.TypeFor[Wind]()
+	cloudType = reflect.TypeFor[Cloud]()
+)
+
+func collectStrings(v reflect.Value, set map[string]bool) {
+	switch v.Kind() {
+	case reflect.Pointer:
+		if !v.IsNil() {
+			collectStrings(v.Elem(), set)
+		}
+	case reflect.String:
+		set[v.String()] = true
+		for _, part := range strings.Fields(v.String()) {
+			set[part] = true
+		}
+	case reflect.Slice:
+		for i := range v.Len() {
+			collectStrings(v.Index(i), set)
+		}
+	case reflect.Struct:
+		switch v.Type() {
+		case windType:
+			wind := v.Interface().(Wind)
+			if wind.Speed != nil {
+				gust := ""
+				if wind.Gust > 0 {
+					gust = fmt.Sprintf("G%02d", wind.Gust)
+				}
+				set[fmt.Sprintf("%s%02d%s%s", wind.Direction, *wind.Speed, gust, wind.Unit)] = true
+			} else if wind.Direction == "///" {
+				set["/////"+wind.Unit] = true
+			}
+		case cloudType:
+			cloud := v.Interface().(Cloud)
+			set[cloud.Coverage] = true
+			if cloud.HeightMissing {
+				set[cloud.Coverage+cloud.Type] = true
+				set[cloud.Coverage+"///"+cloud.Type] = true
+			} else {
+				set[fmt.Sprintf("%s%03d%s", cloud.Coverage, cloud.Height/100, cloud.Type)] = true
+			}
+		}
+		for i := range v.NumField() {
+			field := v.Type().Field(i)
+			if !field.IsExported() {
 				continue
 			}
-			line := strings.TrimSpace(scanner.Text())
-			if !yield(line, DecodeMETAR(line)) {
-				return
-			}
-		}
-	}
-}
-
-func TestDecodeMETAR_stationCode(t *testing.T) {
-	t.Parallel()
-
-	for line, metar := range decodeMETARList(t) {
-		fields := strings.Fields(line)
-		if fields[0] != metar.SiteInfo.Name {
-			t.Run(line, func(t *testing.T) {
-				t.Errorf("Raw METAR: %s\nExpected station code: %s\nActual station code: %s\n\n",
-					line, fields[0], metar.SiteInfo.Name)
-			})
-		}
-	}
-}
-
-func TestDecodeMETAR_time(t *testing.T) {
-	t.Parallel()
-
-	for line, metar := range decodeMETARList(t) {
-		fields := strings.Fields(line)
-		if fields[1] != "COR" {
-			got := metar.Time.Format("021504") + "Z"
-			if fields[1] != got {
-				t.Run(line, func(t *testing.T) {
-					t.Errorf("Raw METAR: %s\nExpected time: %s\nActual time: %s\n\n",
-						line, fields[1], got)
-				})
-			}
-		}
-	}
-}
-
-func TestDecodeMETAR_remarks(t *testing.T) {
-	t.Parallel()
-
-	var unknownValues []string
-	var failedValueCount int
-
-	for line, metar := range decodeMETARList(t) {
-		unknown := make([]string, 0, len(metar.Remarks))
-		for _, rmk := range metar.Remarks {
-			if rmk.Description == "unknown remark code" {
-				unknown = append(unknown, rmk.Raw)
-				unknownValues = append(unknownValues, rmk.Raw)
-			}
-		}
-
-		if len(unknown) != 0 {
-			failedValueCount++
-			t.Run(line, func(t *testing.T) {
-				t.Errorf("Unknown remarks:\nMETAR   = %s\nRemarks = %v", line, unknown)
-			})
-		}
-	}
-
-	t.Run("unknown remark count", func(t *testing.T) {
-		slices.Sort(unknownValues)
-		unknownValues = slices.Compact(unknownValues)
-		assert.Empty(t, len(unknownValues))
-	})
-
-	t.Run("metars with failed remarks", func(t *testing.T) {
-		assert.Zero(t, failedValueCount)
-	})
-}
-func TestDecodeMETAR_weatherCode(t *testing.T) {
-	t.Parallel()
-
-	for line, metar := range decodeMETARList(t) {
-		fields := strings.Fields(line)
-
-		// Find sections to know where to stop
-		rmkIndex := -1
-		sectionIndices := []int{}
-
-		// Find all TEMPO, BECMG, and RMK sections
-		for i, part := range fields {
-			if part == "RMK" {
-				rmkIndex = i
-				break // RMK always ends the main section
-			}
-			if part == "TEMPO" || part == "BECMG" || part == "INTER" {
-				sectionIndices = append(sectionIndices, i)
-			}
-		}
-
-		// Find the first section marker
-		endIndex := len(fields)
-		if rmkIndex != -1 {
-			endIndex = rmkIndex
-		}
-
-		// Find the earliest TEMPO or BECMG section
-		for _, idx := range sectionIndices {
-			if idx < endIndex {
-				endIndex = idx
-			}
-		}
-
-		// Collect weather codes from original METAR
-		var expectedWeatherCodes []string
-		for i := 2; i < endIndex; i++ {
-			if isWeatherCode(fields[i]) {
-				expectedWeatherCodes = append(expectedWeatherCodes, fields[i])
-			}
-		}
-		// Filter out WS which is handled separately as wind shear
-		expectedWeatherCodes = slices.DeleteFunc(expectedWeatherCodes, func(s string) bool {
-			return s == "WS"
-		})
-
-		// Compare with decoded weather codes
-		if !slices.Equal(expectedWeatherCodes, metar.Weather) {
-			t.Run(line, func(t *testing.T) {
-				t.Errorf("Raw METAR: %s\nExpected weather codes: %v\nActual weather codes: %v\n\n",
-					line, expectedWeatherCodes, metar.Weather)
-			})
-		}
-	}
-}
-func TestDecodeMETAR_visibility(t *testing.T) {
-	t.Parallel()
-
-	for line, metar := range decodeMETARList(t) {
-		fields := strings.Fields(line)
-
-		// Find visibility value with SM suffix
-		var expectedVisibility string
-		for i := 1; i < len(fields); i++ {
-			if strings.HasSuffix(fields[i], "SM") {
-				// Check if this could be part of a spaced visibility like "1 1/2SM"
-				if i > 1 && strings.Contains(fields[i], "/") &&
-					!strings.HasPrefix(fields[i-1], "P") && !strings.HasPrefix(fields[i-1], "M") &&
-					!strings.Contains(fields[i-1], "/") && len(fields[i-1]) == 1 {
-					// This is likely a split visibility like "1 1/2SM"
-					expectedVisibility = fields[i-1] + " " + fields[i]
-				} else {
-					expectedVisibility = fields[i]
-				}
-				break
-			}
-		}
-
-		if expectedVisibility != "" && expectedVisibility != metar.Visibility {
-			t.Run(line, func(t *testing.T) {
-				t.Errorf("Raw METAR: %s\nExpected visibility: %s\nActual visibility: %s\n\n",
-					line, expectedVisibility, metar.Visibility)
-			})
-		}
-	}
-}
-func TestDecodeMETAR_verticalVisibility(t *testing.T) {
-	t.Parallel()
-
-	for line, metar := range decodeMETARList(t) {
-		fields := strings.Fields(line)
-
-		// Find sections to know where to stop
-		rmkIndex := -1
-		sectionIndices := []int{}
-
-		// Find all TEMPO, BECMG, and RMK sections
-		for i, part := range fields {
-			if part == "RMK" {
-				rmkIndex = i
-				break // RMK always ends the main section
-			}
-			if part == "TEMPO" || part == "BECMG" || part == "INTER" {
-				sectionIndices = append(sectionIndices, i)
-			}
-		}
-
-		// Find the first section marker
-		endIndex := len(fields)
-		if rmkIndex != -1 {
-			endIndex = rmkIndex
-		}
-
-		// Find the earliest TEMPO or BECMG section
-		for _, idx := range sectionIndices {
-			if idx < endIndex {
-				endIndex = idx
-			}
-		}
-
-		// Find vertical visibility in the original METAR
-		var expectedVertVis int
-		for i := 2; i < endIndex; i++ {
-			if isVerticalVisibility(fields[i]) {
-				matches := vvRegex.FindStringSubmatch(fields[i])
-				if len(matches) > 1 {
-					expectedVertVis, _ = strconv.Atoi(matches[1])
-					break
+			switch field.Name {
+			case "Unhandled", "Remarks":
+				continue
+			case "Raw":
+				if v.Type() == reflect.TypeFor[WeatherData]() || v.Type() == reflect.TypeFor[Forecast]() {
+					continue
 				}
 			}
-		}
-
-		// Only test if vertical visibility was found in the original METAR
-		if expectedVertVis > 0 || metar.VertVis > 0 {
-			if expectedVertVis != metar.VertVis {
-				t.Run(line, func(t *testing.T) {
-					t.Errorf("Raw METAR: %s\nExpected vertical visibility: %d00ft\nActual vertical visibility: %d00ft\n\n",
-						line, expectedVertVis, metar.VertVis)
-				})
-			}
+			collectStrings(v.Field(i), set)
 		}
 	}
 }
 
-func TestDecodeMETAR_wind(t *testing.T) {
-	t.Parallel()
-
-	for line, metar := range decodeMETARList(t) {
-		fields := strings.Fields(line)
-		for _, field := range fields[1:] {
-			if windRegex.MatchString(field) {
-				expectedWind := parseWind(field)
-				if expectedWind != metar.Wind {
-					t.Run(line, func(t *testing.T) {
-						t.Errorf("Raw METAR: %s\nExpected wind: %+v\nActual wind: %+v\n\n",
-							line, expectedWind, metar.Wind)
-					})
-				}
-				break
+func addMETARRenderings(metar METAR, set map[string]bool) {
+	if metar.VertVis > 0 {
+		set[fmt.Sprintf("VV%03d", metar.VertVis)] = true
+	}
+	if metar.VertVisMissing {
+		set["VV///"] = true
+	}
+	if metar.Temperature == nil && metar.DewPoint == nil {
+		set["/////"] = true
+	}
+	if metar.Temperature != nil && metar.DewPoint != nil {
+		for _, temperature := range signedTemps(*metar.Temperature) {
+			for _, dewPoint := range signedTemps(*metar.DewPoint) {
+				set[temperature+"/"+dewPoint] = true
 			}
 		}
+	} else if metar.Temperature != nil {
+		for _, temperature := range signedTemps(*metar.Temperature) {
+			set[temperature+"/"] = true
+			set[temperature+"///"] = true
+		}
+	}
+	switch {
+	case metar.Pressure == 0 && metar.PressureUnit == "inHg":
+		set["A////"] = true
+	case metar.Pressure == 0 && metar.PressureUnit == "hPa":
+		set["Q////"] = true
+	}
+	switch metar.PressureUnit {
+	case "inHg":
+		set[fmt.Sprintf("A%04d", int(math.Round(metar.Pressure*100)))] = true
+	case "hPa":
+		set[fmt.Sprintf("Q%04d", int(metar.Pressure))] = true
 	}
 }
 
-func TestDecodeMETAR_windshear(t *testing.T) {
+// signedTemps renders whole Celsius as METAR text; 0 has two forms because M00 means just below zero
+func signedTemps(celsius int) []string {
+	switch {
+	case celsius < 0:
+		return []string{fmt.Sprintf("M%02d", -celsius)}
+	case celsius == 0:
+		return []string{"00", "M00"}
+	}
+	return []string{fmt.Sprintf("%02d", celsius)}
+}
+
+var metarCoverageMetrics = []string{
+	"metar.station_mismatch",
+	"metar.time_mismatch",
+	"metar.body_unhandled",
+	"metar.body_unrepresented",
+	"metar.weather_not_weather",
+	"metar.weather_missed",
+	"metar.wind_mismatch",
+	"metar.visibility_mismatch",
+	"metar.vertical_visibility_mismatch",
+	"metar.cloud_mismatch",
+	"metar.temperature_mismatch",
+	"metar.pressure_mismatch",
+	"metar.remark_unknown",
+}
+
+// TestMETARCorpusCoverage decodes the METAR corpus and checks each field against an
+// expectation built from test-local regexes, never from the decoder's own helpers.
+func TestMETARCorpusCoverage(t *testing.T) {
 	t.Parallel()
-	var failures []string
 
-	for line, metar := range decodeMETARList(t) {
-		fields := strings.Fields(line)
-		var expectedWindShear []WindShear
-
-		// Find wind shear in the original METAR
-		// Skip station codes and remark sections
-		rmkIndex := -1
-		for i, part := range fields {
-			if part == "RMK" {
-				rmkIndex = i
-				break
-			}
-		}
-		endIndex := len(fields)
-		if rmkIndex != -1 {
-			endIndex = rmkIndex
-		}
-
-		// Only look for wind shear in the main section (not in remarks)
-		for i := 1; i < endIndex; i++ {
-			// Handle "WS ALL RWY" pattern
-			if i+2 < endIndex && fields[i] == "WS" && fields[i+1] == "ALL" && fields[i+2] == "RWY" {
-				expectedWindShear = append(expectedWindShear, WindShear{
-					Type:  "RWY",
-					Phase: "ALL",
-					Raw:   "WS ALL RWY",
-				})
-				i += 2 // Skip the next two tokens
-			} else if i+1 < endIndex && fields[i] == "WS" && strings.HasPrefix(fields[i+1], "R") && len(fields[i+1]) > 1 {
-				// Handle "WS R##" pattern
-				expectedWindShear = append(expectedWindShear, WindShear{
-					Type:   "RWY",
-					Runway: fields[i+1][1:], // Remove the 'R' prefix
-					Raw:    fields[i] + " " + fields[i+1],
-				})
-				i++ // Skip the next token
-			} else if strings.HasPrefix(fields[i], "WS") && fields[i] != "WS" &&
-				!strings.HasPrefix(fields[i], "WSSS") &&
-				!strings.HasPrefix(fields[i], "WSSL") &&
-				!strings.HasPrefix(fields[i], "WSAP") &&
-				!strings.HasPrefix(fields[i], "WSHFT") {
-				// Single-token wind shear format
-				// Skip station codes that start with WS
-				// Skip WSHFT which is a wind shift in remarks
-				expectedWindShear = append(expectedWindShear, parseWindShear(fields[i]))
-			}
-		}
-
-		// Skip if no wind shear in the raw METAR
-		if len(expectedWindShear) == 0 && len(metar.WindShear) == 0 {
+	report := newCoverageReport()
+	scanner := testdata.METAR(t)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
 			continue
 		}
+		checkMETAR(line, DecodeMETAR(line, corpusReference), report)
+	}
 
-		// Check if wind shear was parsed correctly
-		if len(expectedWindShear) != len(metar.WindShear) {
-			failures = append(failures, fmt.Sprintf("Raw METAR: %s\nWrong number of wind shear entries - Expected: %d, Got: %d\nExpected: %+v\nActual: %+v\n\n",
-				line, len(expectedWindShear), len(metar.WindShear), expectedWindShear, metar.WindShear))
+	report.check(t, metarCoverageMetrics)
+}
+
+func checkMETAR(line string, metar METAR, report *coverageReport) {
+	fields := strings.Fields(line)
+	start := headerLength(fields)
+	station := expectedStation(fields)
+	bodyEnd := indexOrLen(fields, "RMK")
+	trendStart := indexOrLen(fields[:bodyEnd], "TEMPO", "BECMG", "INTER")
+	body := fields[start:trendStart]
+
+	if metar.Station != station {
+		report.add("metar.station_mismatch", metar.Station)
+	}
+
+	for _, field := range fields[:min(start+2, len(fields))] {
+		if testIssueTimeRegex.MatchString(field) {
+			if got := metar.Time.Format("021504") + "Z"; got != field {
+				report.add("metar.time_mismatch", tokenShape(field))
+			}
+			break
+		}
+	}
+
+	for _, token := range metar.Unhandled {
+		report.add("metar.body_unhandled", tokenShape(token))
+	}
+
+	represented := representedTokens(metar)
+	addMETARRenderings(metar, represented)
+	for _, token := range fields[start:bodyEnd] {
+		if !represented[token] && !slices.Contains(metar.Unhandled, token) {
+			report.add("metar.body_unrepresented", tokenShape(token))
+		}
+	}
+
+	for _, weather := range metar.Weather {
+		if !isTestWeatherGroup(weather) {
+			report.add("metar.weather_not_weather", weather)
+		}
+	}
+	for _, token := range body {
+		if isTestWeatherGroup(token) && !slices.Contains(metar.Weather, token) {
+			report.add("metar.weather_missed", token)
+		}
+	}
+
+	for _, token := range body {
+		if m := testWindRegex.FindStringSubmatch(token); m != nil {
+			speed, _ := strconv.Atoi(m[2])
+			gust, _ := strconv.Atoi(m[3])
+			wind := metar.Wind
+			if wind.Direction != m[1] || wind.Speed == nil || *wind.Speed != speed || wind.Gust != gust || wind.Unit != m[4] {
+				report.add("metar.wind_mismatch", tokenShape(token))
+			}
+			break
+		}
+	}
+
+	if visibility := expectedSMVisibility(fields[start:bodyEnd]); visibility != "" && visibility != metar.Visibility {
+		report.add("metar.visibility_mismatch", tokenShape(visibility))
+	}
+
+	for _, token := range body {
+		if m := testVertVisRegex.FindStringSubmatch(token); m != nil {
+			if height, _ := strconv.Atoi(m[1]); height != metar.VertVis {
+				report.add("metar.vertical_visibility_mismatch", tokenShape(token))
+			}
+			break
+		}
+	}
+
+	var clouds []Cloud
+	for _, token := range body {
+		if m := testCloudRegex.FindStringSubmatch(token); m != nil {
+			if m[4] != "" {
+				clouds = append(clouds, Cloud{Coverage: m[4]})
+				continue
+			}
+			if m[5] != "" {
+				height, _ := strconv.Atoi(m[7])
+				clouds = append(clouds, Cloud{Coverage: m[5], Height: height * 100, Type: m[6]})
+				continue
+			}
+			if m[2] == "" || m[2] == "///" {
+				clouds = append(clouds, Cloud{Coverage: m[1], HeightMissing: true, Type: m[3]})
+				continue
+			}
+			height, _ := strconv.Atoi(m[2])
+			clouds = append(clouds, Cloud{Coverage: m[1], Height: height * 100, Type: m[3]})
+		}
+	}
+	if !slices.Equal(clouds, metar.Clouds) {
+		report.add("metar.cloud_mismatch", fmt.Sprintf("want %d layers, got %d", len(clouds), len(metar.Clouds)))
+	}
+
+	for _, token := range body {
+		if m := testTempRegex.FindStringSubmatch(token); m != nil {
+			temperature, _ := strconv.Atoi(m[2])
+			if m[1] == "M" {
+				temperature = -temperature
+			}
+			dewPoint, _ := strconv.Atoi(m[4])
+			if m[3] == "M" {
+				dewPoint = -dewPoint
+			}
+			if metar.Temperature == nil || metar.DewPoint == nil || *metar.Temperature != temperature || *metar.DewPoint != dewPoint {
+				report.add("metar.temperature_mismatch", tokenShape(token))
+			}
+			break
+		}
+	}
+
+	for _, token := range body {
+		if m := testPressureRegex.FindStringSubmatch(token); m != nil {
+			value, _ := strconv.Atoi(m[2])
+			want, unit := float64(value), "hPa"
+			if m[1] == "A" {
+				want, unit = float64(value)/100, "inHg"
+			}
+			if math.Abs(metar.Pressure-want) > 0.001 || metar.PressureUnit != unit {
+				report.add("metar.pressure_mismatch", tokenShape(token))
+			}
+			break
+		}
+	}
+
+	for _, remark := range metar.Remarks {
+		if remark.Description == "unknown remark code" {
+			report.add("metar.remark_unknown", tokenShape(remark.Raw))
+		}
+	}
+}
+
+// expectedSMVisibility returns the first statute-mile visibility, joining a split "1 1/2SM"
+func expectedSMVisibility(fields []string) string {
+	for i, field := range fields {
+		if !strings.HasSuffix(field, "SM") {
 			continue
 		}
-
-		// Compare each wind shear entry
-		for i, expected := range expectedWindShear {
-			actual := metar.WindShear[i]
-
-			// Compare Type, Runway and Phase fields which are most relevant
-			if expected.Type != actual.Type ||
-				expected.Runway != actual.Runway ||
-				expected.Phase != actual.Phase {
-
-				failures = append(failures, fmt.Sprintf("Raw METAR: %s\nWind shear entry mismatch\nExpected: %+v\nActual: %+v\n\n",
-					line, expected, actual))
-			}
+		if i > 0 && strings.Contains(field, "/") && len(fields[i-1]) == 1 && fields[i-1][0] >= '1' && fields[i-1][0] <= '9' {
+			return fields[i-1] + " " + field
 		}
+		return field
 	}
-
-	if len(failures) > 0 {
-		// Create log content
-		logContent := "WIND SHEAR PARSING FAILURES IN METAR\n"
-		logContent += "==================================\n\n"
-		logContent += strings.Join(failures, "")
-
-		// Write to log file
-		logFile := logTestFailures(t, "wind_shear_parsing_failures", logContent)
-
-		t.Errorf("Found %d wind shear parsing failures in METAR. See '%s' for details.",
-			len(failures), logFile)
-	}
+	return ""
 }
 
-func TestDecodeMETAR_weather(t *testing.T) {
-	t.Parallel()
-
-	for line, metar := range decodeMETARList(t) {
-		fields := strings.Fields(line)
-		var expectedWeather []string
-
-		// Find sections to know where to stop
-		rmkIndex := -1
-		sectionIndices := []int{}
-
-		// Find all TEMPO, BECMG, and RMK sections
-		for i, part := range fields {
-			if part == "RMK" {
-				rmkIndex = i
-				break // RMK always ends the main section
-			}
-			if part == "TEMPO" || part == "BECMG" || part == "INTER" {
-				sectionIndices = append(sectionIndices, i)
-			}
-		}
-
-		// Find the first section marker
-		endIndex := len(fields)
-		if rmkIndex != -1 {
-			endIndex = rmkIndex
-		}
-
-		// Find the earliest TEMPO or BECMG section
-		for _, idx := range sectionIndices {
-			if idx < endIndex {
-				endIndex = idx
-			}
-		}
-
-		// Collect weather phenomena from original METAR
-		for i := 2; i < endIndex; i++ {
-			if isWeatherCode(fields[i]) {
-				expectedWeather = append(expectedWeather, fields[i])
-			}
-		}
-		expectedWeather = slices.DeleteFunc(expectedWeather, func(s string) bool {
-			return s == "WS"
-		})
-
-		// Check if weather phenomena were parsed correctly
-		if !slices.Equal(expectedWeather, metar.Weather) {
-			t.Run(line, func(t *testing.T) {
-				t.Errorf("Raw METAR: %s\nExpected weather phenomena: %v\nActual weather phenomena: %v\n\n",
-					line, expectedWeather, metar.Weather)
-			})
-		}
-	}
+var tafCoverageMetrics = []string{
+	"taf.station_mismatch",
+	"taf.period_count_mismatch",
+	"taf.weather_not_weather",
+	"taf.unrepresented",
 }
-func TestDecodeMETAR_clouds(t *testing.T) {
+
+// TestTAFCorpusCoverage decodes the TAF corpus and counts the forecast tokens that no decoded
+// field represents
+func TestTAFCorpusCoverage(t *testing.T) {
 	t.Parallel()
 
-	for line, metar := range decodeMETARList(t) {
-		fields := strings.Fields(line)
-		var expectedClouds []Cloud
-
-		// Find sections to know where to stop
-		rmkIndex := -1
-		sectionIndices := []int{}
-
-		// Find all TEMPO, BECMG, and RMK sections
-		for i, part := range fields {
-			if part == "RMK" {
-				rmkIndex = i
-				break // RMK always ends the main section
-			}
-			if part == "TEMPO" || part == "BECMG" || part == "INTER" {
-				sectionIndices = append(sectionIndices, i)
-			}
-		}
-
-		// Find the first section marker
-		endIndex := len(fields)
-		if rmkIndex != -1 {
-			endIndex = rmkIndex
-		}
-
-		// Find the earliest TEMPO or BECMG section
-		for _, idx := range sectionIndices {
-			if idx < endIndex {
-				endIndex = idx
-			}
-		}
-
-		// Collect cloud data from original METAR
-		for i := 2; i < endIndex; i++ {
-			if cloudRegex.MatchString(fields[i]) {
-				expectedClouds = append(expectedClouds, parseCloud(fields[i]))
-			}
-		}
-
-		// Check number of cloud layers
-		if len(expectedClouds) != len(metar.Clouds) {
-			t.Run(line, func(t *testing.T) {
-				t.Errorf("Raw METAR: %s\nWrong number of cloud layers - Expected: %d, Got: %d\nExpected clouds: %+v\nActual clouds: %+v\n\n",
-					line, len(expectedClouds), len(metar.Clouds), expectedClouds, metar.Clouds)
-			})
+	report := newCoverageReport()
+	scanner := testdata.TAF(t)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line == "---" {
 			continue
 		}
+		checkTAF(line, DecodeTAF(line, corpusReference), report)
+	}
 
-		// Check each cloud layer
-		for i := range expectedClouds {
-			if i < len(metar.Clouds) && expectedClouds[i] != metar.Clouds[i] {
-				t.Run(line, func(t *testing.T) {
-					t.Errorf("Raw METAR: %s\nCloud layer %d mismatch\nExpected: %+v\nActual: %+v\n\n",
-						line, i, expectedClouds[i], metar.Clouds[i])
-				})
+	report.check(t, tafCoverageMetrics)
+}
+
+func checkTAF(line string, taf TAF, report *coverageReport) {
+	fields := strings.Fields(line)
+	start := headerLength(fields)
+	forecast := fields[start:indexOrLen(fields, "RMK")]
+
+	if station := expectedStation(fields); taf.Station != station {
+		report.add("taf.station_mismatch", taf.Station)
+	}
+
+	periods := 1
+	for i, token := range forecast {
+		switch {
+		case testFromRegex.MatchString(token), testProbRegex.MatchString(token), token == "BECMG", token == "INTER":
+			periods++
+		case token == "TEMPO":
+			if i == 0 || !testProbRegex.MatchString(forecast[i-1]) {
+				periods++
 			}
 		}
 	}
-}
+	if periods != len(taf.Forecasts) {
+		report.add("taf.period_count_mismatch", fmt.Sprintf("want %d periods, got %d", periods, len(taf.Forecasts)))
+	}
 
-func TestDecodeMETAR_temperature(t *testing.T) {
-	t.Parallel()
-
-	for line, metar := range decodeMETARList(t) {
-		fields := strings.Fields(line)
-
-		// Find temperature/dew point in the original METAR
-		for _, field := range fields {
-			if tempRegex.MatchString(field) {
-				matches := tempRegex.FindStringSubmatch(field)
-				expectedTemp, _ := strconv.Atoi(matches[2])
-				if matches[1] == "M" {
-					expectedTemp = -expectedTemp
-				}
-
-				expectedDew, _ := strconv.Atoi(matches[4])
-				if matches[3] == "M" {
-					expectedDew = -expectedDew
-				}
-
-				// Check if temperature is not nil before comparing
-				if metar.Temperature == nil {
-					t.Run(line, func(t *testing.T) {
-						t.Errorf("Raw METAR: %s\nTemperature is nil but expected: %d\n\n",
-							line, expectedTemp)
-					})
-				} else if expectedTemp != *metar.Temperature {
-					t.Run(line, func(t *testing.T) {
-						t.Errorf("Raw METAR: %s\nTemperature mismatch - Expected: %d, Got: %d\n",
-							line, expectedTemp, *metar.Temperature)
-					})
-				}
-
-				// Check if dew point is not nil before comparing
-				if metar.DewPoint == nil {
-					t.Run(line, func(t *testing.T) {
-						t.Errorf("Raw METAR: %s\nDew point is nil but expected: %d\n\n",
-							line, expectedDew)
-					})
-				} else if expectedDew != *metar.DewPoint {
-					t.Run(line, func(t *testing.T) {
-						t.Errorf("Raw METAR: %s\nDew point mismatch - Expected: %d, Got: %d\n\n",
-							line, expectedDew, *metar.DewPoint)
-					})
-				}
-				break
+	for _, period := range taf.Forecasts {
+		for _, weather := range period.Weather {
+			if !isTestWeatherGroup(weather) {
+				report.add("taf.weather_not_weather", weather)
 			}
 		}
 	}
-}
-func TestDecodeMETAR_pressure(t *testing.T) {
-	t.Parallel()
 
-	for line, metar := range decodeMETARList(t) {
-		fields := strings.Fields(line)
-
-		// Skip the test if there's no pressure information
-		if metar.Pressure == 0 {
+	represented := representedTokens(taf)
+	for _, period := range taf.Forecasts {
+		if period.VertVis > 0 {
+			represented[fmt.Sprintf("VV%03d", period.VertVis)] = true
+		}
+		if period.NSC {
+			represented["NSC"] = true
+		}
+		if period.NSW {
+			represented["NSW"] = true
+		}
+		if period.PressureUnit == "inHg" {
+			represented[fmt.Sprintf("QNH%04dINS", int(math.Round(period.Pressure*100)))] = true
+		}
+	}
+	for _, token := range forecast {
+		switch {
+		case testFromRegex.MatchString(token), testProbRegex.MatchString(token), testPeriodRegex.MatchString(token),
+			token == "TEMPO", token == "BECMG", token == "INTER":
 			continue
 		}
-
-		// Find sections to know where to stop
-		rmkIndex := -1
-		sectionIndices := []int{}
-
-		// Find all TEMPO, BECMG, and RMK sections
-		for i, part := range fields {
-			if part == "RMK" {
-				rmkIndex = i
-				break // RMK always ends the main section
-			}
-			if part == "TEMPO" || part == "BECMG" || part == "INTER" {
-				sectionIndices = append(sectionIndices, i)
-			}
-		}
-
-		// Find the first section marker
-		endIndex := len(fields)
-		if rmkIndex != -1 {
-			endIndex = rmkIndex
-		}
-
-		// Find the earliest TEMPO or BECMG section
-		for _, idx := range sectionIndices {
-			if idx < endIndex {
-				endIndex = idx
-			}
-		}
-
-		found := false
-
-		// Find the first pressure value in the main section, regardless of format
-		var firstPressureIndex = -1
-		var isPressureQ = false
-		var isPressureA = false
-		var expectedPressure float64
-
-		for i := 2; i < endIndex; i++ {
-			part := fields[i]
-
-			// Check for Q format (hPa/millibars)
-			if len(part) > 1 && part[0] == 'Q' {
-				pressureStr := part[1:]
-				pressureInt, err := strconv.Atoi(pressureStr)
-				if err == nil && firstPressureIndex == -1 {
-					firstPressureIndex = i
-					isPressureQ = true
-					expectedPressure = float64(pressureInt)
-				}
-			}
-
-			// Check for A format (inHg)
-			if pressureRegex.MatchString(part) {
-				matches := pressureRegex.FindStringSubmatch(part)
-				pressureStr := matches[1]
-				pressureInt, err := strconv.Atoi(pressureStr)
-				if err == nil && firstPressureIndex == -1 {
-					firstPressureIndex = i
-					isPressureA = true
-					expectedPressure = float64(pressureInt) / 100.0
-				}
-			}
-		}
-
-		// Now validate based on the first pressure format found
-		if firstPressureIndex != -1 {
-			found = true
-			if isPressureQ {
-				if expectedPressure != metar.Pressure || metar.PressureUnit != "hPa" {
-					t.Run(line, func(t *testing.T) {
-						t.Errorf("Raw METAR: %s\nQ-format pressure mismatch - Expected: %.2f hPa, Got: %.2f %s\n\n",
-							line, expectedPressure, metar.Pressure, metar.PressureUnit)
-					})
-				}
-			} else if isPressureA {
-				if expectedPressure != metar.Pressure || metar.PressureUnit != "inHg" {
-					t.Run(line, func(t *testing.T) {
-						t.Errorf("Raw METAR: %s\nA-format pressure mismatch - Expected: %.2f inHg, Got: %.2f %s\n\n",
-							line, expectedPressure, metar.Pressure, metar.PressureUnit)
-					})
-				}
-			}
-		}
-
-		// Make sure we found and tested a pressure value if there's a non-remark pressure
-		if metar.Pressure > 0 && !found {
-			// Only check for METARs known to have pressure in main section
-			mainSectionHasPressure := false
-			for i := 2; i < endIndex; i++ {
-				part := fields[i]
-				if (len(part) > 1 && part[0] == 'Q') || pressureRegex.MatchString(part) {
-					mainSectionHasPressure = true
-					break
-				}
-			}
-			if mainSectionHasPressure {
-				t.Run(line, func(t *testing.T) {
-					t.Errorf("Raw METAR: %s\nExpected to find pressure in main section but didn't. Decoded pressure: %.2f %s\n\n",
-						line, metar.Pressure, metar.PressureUnit)
-				})
-			}
+		if !represented[token] {
+			report.add("taf.unrepresented", tokenShape(token))
 		}
 	}
-}
-
-// TestDecodeMETAR_unhandledValues tests that all values in the METAR pre-remark section are handled
-func TestDecodeMETAR_unhandledValues(t *testing.T) {
-	t.Parallel()
-
-	var failedValueCount int
-
-	for line, metar := range decodeMETARList(t) {
-
-		if len(metar.Unhandled) != 0 {
-			failedValueCount++
-			t.Run(line, func(t *testing.T) {
-				t.Errorf("Unknown value:\nMETAR   = %s\nValue = %v", line, metar.Unhandled)
-			})
-		}
-	}
-
-	t.Run("00 metars with failed values", func(t *testing.T) {
-		assert.Zero(t, failedValueCount)
-	})
 }

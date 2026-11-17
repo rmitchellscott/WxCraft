@@ -3,13 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"strings"
 
 	"github.com/fatih/color"
 )
 
+const reportSeparator = "\n----------------------------------\n\n"
+
 func main() {
-	// Define command-line flags
 	metarOnly := flag.Bool("metar", false, "Show only METAR")
 	tafOnly := flag.Bool("taf", false, "Show only TAF")
 	noRawFlag := flag.Bool("no-raw", false, "Hide raw data")
@@ -22,136 +22,109 @@ func main() {
 	flag.Parse()
 
 	if *flagNoColor {
-		color.NoColor = true // disables colorized output globally
+		color.NoColor = true
 	}
 
-	var rawInput string
-	if data != nil {
-		rawInput = *data
+	lookupSiteInfo := FetchSiteInfo
+	if *offlineFlag {
+		lookupSiteInfo = LoadEmbeddedStationInfo
 	}
-
-	// First check stdin for piped data
-	stationCode, rawInput, stdinHasData, isStdinTAF := readFromStdin(rawInput)
-
-	// If no stdin data, get station code from various sources
-	if !stdinHasData {
-		var err error
-
-		// Check if -nearest flag is used
-		if *nearestFlag {
-			stationCode, err = ProcessAutoCommand(*radiusFlag)
+	siteInfoByStation := map[string]SiteInfo{}
+	siteInfoFor := func(stationCode string) SiteInfo {
+		if siteInfo, ok := siteInfoByStation[stationCode]; ok {
+			return siteInfo
+		}
+		siteInfo := SiteInfo{Name: stationCode}
+		if !*noDecodeFlag {
+			var err error
+			siteInfo, err = lookupSiteInfo(stationCode)
 			if err != nil {
-				fmt.Printf("Error: %v\n", err)
-				return
-			}
-		} else {
-			// Try command line args first
-			remainingArgs := flag.Args()
-			if len(remainingArgs) > 0 {
-				input := strings.ToUpper(strings.TrimSpace(remainingArgs[0]))
-
-				// Check for special cases before calling the standard function
-				if input == "AUTO" {
-					stationCode, err = ProcessAutoCommand(*radiusFlag)
-					if err != nil {
-						fmt.Printf("Error: %v\n", err)
-						return
-					}
-				} else if zipRegex.MatchString(input) {
-					stationCode, err = ProcessZipcode(input, *radiusFlag)
-					if err != nil {
-						fmt.Printf("Error: %v\n", err)
-						return
-					}
-				} else {
-					// Use existing function for regular ICAO codes
-					stationCode, err = getStationCodeFromArgs(remainingArgs)
-					if err != nil {
-						fmt.Printf("Error: %v\n", err)
-						return
-					}
-				}
-			} else {
-				// Prompt the user
-				stationCode, err = promptForStationCode()
-				if err != nil {
-					fmt.Printf("Error: %v\n", err)
-					return
-				}
-
-				// Check for special cases after getting user input
-				if stationCode == "AUTO" {
-					stationCode, err = ProcessAutoCommand(*radiusFlag)
-					if err != nil {
-						fmt.Printf("Error: %v\n", err)
-						return
-					}
-				} else if zipRegex.MatchString(stationCode) {
-					stationCode, err = ProcessZipcode(stationCode, *radiusFlag)
-					if err != nil {
-						fmt.Printf("Error: %v\n", err)
-						return
-					}
-				}
+				fmt.Printf("Warning: Could not get site info for %s: %v\n", stationCode, err)
 			}
 		}
+		siteInfoByStation[stationCode] = siteInfo
+		return siteInfo
 	}
 
-	// Rest of your code unchanged...
-	var siteInfo SiteInfo
-	var siteInfoFetched bool
-
-	if !*noDecodeFlag {
-		fetchedSiteInfo, err := FetchSiteInfo(stationCode)
+	input := *data
+	if input == "" {
+		var err error
+		input, err = readPipedStdin()
 		if err != nil {
-			fmt.Printf("Warning: Could not fetch site info for %s: %v\n", stationCode, err)
-		} else {
-			siteInfo = fetchedSiteInfo
-			siteInfoFetched = true
+			errorColor.Printf("Error: %v\n", err)
+			return
 		}
 	}
 
-	// Handle stdin data based on flags and auto-detection
-	if stdinHasData {
-		// If offline mode is enabled, get station info from embedded file
-		if *offlineFlag {
-			// Only attempt to load site info if we don't already have it
-			if !siteInfoFetched {
-				offlineSiteInfo, err := LoadEmbeddedStationInfo(stationCode)
-				if err != nil {
-					fmt.Printf("Warning: Could not load offline site info for %s: %v\n", stationCode, err)
-				} else {
-					siteInfo = offlineSiteInfo
-					siteInfoFetched = true
-				}
+	if input != "" {
+		reports := splitReports(input)
+		if len(reports) == 0 {
+			errorColor.Println("Error: no METAR or TAF found in the input.")
+			return
+		}
+		for i, r := range reports {
+			kind := r.Kind
+			if *tafOnly {
+				kind = tafReport
+			} else if *metarOnly {
+				kind = metarReport
+			}
+
+			if i > 0 {
+				fmt.Print(reportSeparator)
+			}
+			if kind == tafReport {
+				processTAF(r.Raw, siteInfoFor(r.Station), *noRawFlag, *noDecodeFlag)
+			} else {
+				processMETAR(r.Raw, siteInfoFor(r.Station), *noRawFlag, *noDecodeFlag)
 			}
 		}
+		return
+	}
 
-		// Process data according to flags, overriding auto-detection if flags are specified
-		if *tafOnly || (isStdinTAF && !*metarOnly) {
-			// Process as TAF (either forced with -taf flag or detected as TAF and not forced to METAR)
-			processTAF(stationCode, rawInput, true, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
-		} else if *metarOnly || !isStdinTAF {
-			// Process as METAR (either forced with -metar flag or detected as METAR)
-			processMETAR(stationCode, rawInput, true, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
+	if *offlineFlag {
+		errorColor.Println("Error: offline mode needs METAR or TAF data on stdin or in -data.")
+		return
+	}
+
+	var stationInput string
+	switch {
+	case *nearestFlag:
+		stationInput = "AUTO"
+	case flag.NArg() > 0:
+		stationInput = flag.Arg(0)
+	default:
+		var err error
+		stationInput, err = promptForStationCode()
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
 		}
-	} else {
-		// No stdin data, fetch from web based on flags
+	}
 
-		// Fetch and display METAR if requested or by default
+	stationCode, err := networkStationResolver.resolve(stationInput, *radiusFlag)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	siteInfo := siteInfoFor(stationCode)
+
+	if !*tafOnly {
+		if rawMetar, err := FetchMETAR(stationCode); err != nil {
+			errorColor.Printf("Error fetching METAR: %v\n", err)
+		} else {
+			processMETAR(rawMetar, siteInfo, *noRawFlag, *noDecodeFlag)
+		}
+	}
+
+	if !*metarOnly {
 		if !*tafOnly {
-			processMETAR(stationCode, "", false, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
+			fmt.Print(reportSeparator)
 		}
-
-		// Fetch and display TAF if requested or by default
-		if !*metarOnly {
-			// Add a line break if we also displayed METAR
-			if !*tafOnly {
-				fmt.Print("\n----------------------------------\n\n")
-			}
-
-			// Fetch and process TAF from the web
-			processTAF(stationCode, "", false, *noRawFlag, *noDecodeFlag, siteInfo, siteInfoFetched, *offlineFlag)
+		if rawTAF, err := FetchTAF(stationCode); err != nil {
+			errorColor.Printf("Error fetching TAF: %v\n", err)
+		} else {
+			processTAF(rawTAF, siteInfo, *noRawFlag, *noDecodeFlag)
 		}
 	}
 }

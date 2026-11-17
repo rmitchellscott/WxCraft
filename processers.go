@@ -727,94 +727,37 @@ func processRemarks(remarkParts []string) []Remark {
 	return remarks
 }
 
-// processMETAR fetches, decodes and displays METAR data with site information
-func processMETAR(stationCode string, rawInput string, stdinHasData bool, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool, offlineMode bool) {
-	var rawMetar string
-	var err error
-
-	// Get the raw METAR data
-	if stdinHasData {
-		rawMetar = rawInput
-	} else if !offlineMode {
-		// Only fetch from API if not in offline mode
-		rawMetar, err = FetchMETAR(stationCode)
-		if err != nil {
-			errorColor.Printf("Error fetching METAR: %v\n", err)
-			return
-		}
-	} else {
-		// In offline mode without stdin data, we can't proceed
-		errorColor.Println("Error: Cannot fetch METAR in offline mode without piped input.")
-		return
-	}
-
-	// Print the raw METAR if requested
+// processMETAR prints the raw METAR and its decoding with the given site information
+func processMETAR(rawMetar string, siteInfo SiteInfo, noRaw bool, noDecode bool) {
 	if !noRaw {
 		functionColor.Println("----- Raw METAR -----")
 		fmt.Println(rawMetar)
-
-		// Add a line break if we're also showing decoded data
 		if !noDecode {
 			fmt.Println()
 		}
 	}
 
-	// Decode and display the METAR if requested
 	if !noDecode {
-		// Decode the METAR
-		metar := DecodeMETAR(rawMetar)
-
-		// Add site information
+		metar := DecodeMETAR(rawMetar, time.Now().UTC())
 		metar.SiteInfo = siteInfo
-
-		// Display the decoded METAR
 		functionColor.Println("--- Decoded METAR ---")
 		fmt.Print(FormatMETAR(metar))
 	}
 }
 
-// processTAF fetches, decodes and displays TAF data with site information
-// This follows the same pattern as processMETAR to handle both stdin and network calls
-func processTAF(stationCode string, rawInput string, stdinHasData bool, noRaw bool, noDecode bool, siteInfo SiteInfo, siteInfoFetched bool, offlineMode bool) {
-	var rawTAF string
-	var err error
-
-	// Get the raw TAF data
-	if stdinHasData {
-		rawTAF = rawInput
-	} else if !offlineMode {
-		// Only fetch from API if not in offline mode
-		rawTAF, err = FetchTAF(stationCode)
-		if err != nil {
-			errorColor.Printf("Error fetching TAF: %v\n", err)
-			return
-		}
-	} else {
-		// In offline mode without stdin data, we can't proceed
-		errorColor.Println("Error: Cannot fetch TAF in offline mode without piped input.")
-		return
-	}
-
-	// Print the raw TAF if requested
+// processTAF prints the raw TAF and its decoding with the given site information
+func processTAF(rawTAF string, siteInfo SiteInfo, noRaw bool, noDecode bool) {
 	if !noRaw {
 		functionColor.Println("------ Raw TAF ------")
 		fmt.Println(rawTAF)
-
-		// Add a line break if we're also showing decoded data
 		if !noDecode {
 			fmt.Println()
 		}
 	}
 
-	// Decode and display the TAF if requested
 	if !noDecode {
-		// Decode the TAF
 		taf := DecodeTAF(rawTAF, time.Now().UTC())
-
-		// Add site information
 		taf.SiteInfo = siteInfo
-
-		// Display the decoded TAF
 		functionColor.Println("---- Decoded TAF ----")
 		fmt.Print(FormatTAF(taf))
 	}

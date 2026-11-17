@@ -96,7 +96,7 @@ func findNearbyStations(position Position, radiusMiles float64) ([]Station, erro
 	u.RawQuery = q.Encode()
 
 	// Make the request
-	resp, err := http.Get(u.String())
+	resp, err := httpGet(u.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query Aviation Weather API: %w", err)
 	}

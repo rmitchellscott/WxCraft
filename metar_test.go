@@ -17,6 +17,8 @@ func formatWithoutTime(m METAR) string {
 	return FormatMETAR(m)
 }
 
+var metarTestReference = time.Date(2026, time.March, 14, 0, 0, 0, 0, time.UTC)
+
 func TestMETARReportTypePrefix(t *testing.T) {
 	tests := []struct {
 		raw          string
@@ -33,7 +35,7 @@ func TestMETARReportTypePrefix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.raw, func(t *testing.T) {
-			m := DecodeMETAR(tt.raw)
+			m := DecodeMETAR(tt.raw, metarTestReference)
 			assert.Equal(t, tt.reportType, m.ReportType)
 			assert.Equal(t, tt.station, m.Station)
 			assert.Equal(t, tt.station, m.SiteInfo.Name)
@@ -65,9 +67,9 @@ func TestMETARIsWeatherCode(t *testing.T) {
 }
 
 func TestMETARRunwayStateAndRVR(t *testing.T) {
-	m := DecodeMETAR("UWKE 080747Z 33005MPS 9999 OVC008 M02/M02 Q1010 " +
-		"R24/290050 R88/CLRD// R06/CLRD62 R07/32//50 R02/////// R/SNOCLO " +
-		"R24/P2000N R04/1200V1800FT/U R10///// NOSIG")
+	m := DecodeMETAR("UWKE 080747Z 33005MPS 9999 OVC008 M02/M02 Q1010 "+
+		"R24/290050 R88/CLRD// R06/CLRD62 R07/32//50 R02/////// R/SNOCLO "+
+		"R24/P2000N R04/1200V1800FT/U R10///// NOSIG", metarTestReference)
 
 	assert.Equal(t, []RunwayState{
 		{Runway: "24", Deposit: "2", Extent: "9", Depth: "00", Friction: "50", Raw: "R24/290050"},
@@ -146,7 +148,7 @@ func TestMETARWind(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.raw, func(t *testing.T) {
-			m := DecodeMETAR("KXYZ 121651Z " + tt.raw + " 10SM CLR 20/10 A3001")
+			m := DecodeMETAR("KXYZ 121651Z "+tt.raw+" 10SM CLR 20/10 A3001", metarTestReference)
 			assert.Equal(t, tt.wind, m.Wind)
 			assert.Equal(t, tt.expected, formatWind(m.Wind))
 			assert.Empty(t, m.Unhandled)
@@ -157,7 +159,7 @@ func TestMETARWind(t *testing.T) {
 }
 
 func TestMETARWindShearSpeed(t *testing.T) {
-	m := DecodeMETAR("KXYZ 121651Z 18010KT 10SM CLR 20/10 A3001 WS020/27045G55KT")
+	m := DecodeMETAR("KXYZ 121651Z 18010KT 10SM CLR 20/10 A3001 WS020/27045G55KT", metarTestReference)
 	assert.Contains(t, formatWithoutTime(m), "\nWind Shear:\n  At 2,000 feet: From 270° at 45 knots, gusting to 55 knots\n")
 
 	color.NoColor = true
@@ -172,7 +174,7 @@ func TestMETARWindShearSpeed(t *testing.T) {
 }
 
 func TestMETARDirectionalMinimumVisibility(t *testing.T) {
-	m := DecodeMETAR("LIRF 121650Z 18005KT 4000 1500NE BR SCT010 12/11 Q1018")
+	m := DecodeMETAR("LIRF 121650Z 18005KT 4000 1500NE BR SCT010 12/11 Q1018", metarTestReference)
 	assert.Equal(t, "4000", m.Visibility)
 	assert.Equal(t, "1500NE", m.MinVisibility)
 	assert.Equal(t, []string{"BR"}, m.Weather)
@@ -182,8 +184,8 @@ func TestMETARDirectionalMinimumVisibility(t *testing.T) {
 }
 
 func TestMETARMissingValues(t *testing.T) {
-	m := DecodeMETAR("ENUG 080750Z AUTO /////KT ///V/// //// // BKN008/// ///015 ///CB " +
-		"///////// BKN/// FEW015/// ///// Q//// W///S4 W15/S2 W12/H7 WM01/// RE//")
+	m := DecodeMETAR("ENUG 080750Z AUTO /////KT ///V/// //// // BKN008/// ///015 ///CB "+
+		"///////// BKN/// FEW015/// ///// Q//// W///S4 W15/S2 W12/H7 WM01/// RE//", metarTestReference)
 
 	assert.Equal(t, Wind{Direction: "///", Unit: "KT"}, m.Wind)
 	assert.Equal(t, "///V///", m.WindVariation)
@@ -243,20 +245,20 @@ func TestMETARMissingValueTokensAreHandled(t *testing.T) {
 	}
 
 	for _, raw := range reports {
-		m := DecodeMETAR(raw)
+		m := DecodeMETAR(raw, metarTestReference)
 		assert.Empty(t, m.Unhandled, raw)
 	}
 }
 
 func TestMETARAutomatedMissingGroupMarker(t *testing.T) {
-	m := DecodeMETAR("PASY 080655Z AUTO M 7SM M 03/03 M")
+	m := DecodeMETAR("PASY 080655Z AUTO M 7SM M 03/03 M", metarTestReference)
 	assert.Equal(t, []string{"AUTO", "M"}, m.SpecialCodes)
 	assert.Equal(t, "7SM", m.Visibility)
 	assert.Contains(t, formatWithoutTime(m), "  • A group was not reported\n")
 }
 
 func TestMETARMilitaryColorState(t *testing.T) {
-	m := DecodeMETAR("EBLB 081425Z 15007KT 9999 FEW030 15/M04 Q1010 BLACKBLU")
+	m := DecodeMETAR("EBLB 081425Z 15007KT 9999 FEW030 15/M04 Q1010 BLACKBLU", metarTestReference)
 	assert.Empty(t, m.Weather)
 	assert.Equal(t, []string{"BLACKBLU"}, m.SpecialCodes)
 	assert.Equal(t, "military color state blue: visibility at least 8 km and cloud base at least 2500 feet, airfield unusable for non-weather reasons (BLACKBLU)",
@@ -281,7 +283,7 @@ func TestMETARCelsiusToFahrenheit(t *testing.T) {
 }
 
 func TestMETARFormatGolden(t *testing.T) {
-	m := DecodeMETAR("METAR KJFK 121651Z 00000KT 10SM -RA BKN000 OVC012 M01/M01 A3001")
+	m := DecodeMETAR("METAR KJFK 121651Z 00000KT 10SM -RA BKN000 OVC012 M01/M01 A3001", metarTestReference)
 	assert.Equal(t, "METAR", m.ReportType)
 
 	expected := `Station: KJFK

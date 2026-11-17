@@ -22,7 +22,7 @@ type Location struct {
 // GetLocation uses a free IP geolocation service to get location information
 // Uses ipinfo.io which is free for non-commercial use
 func GetLocation() (*Location, error) {
-	resp, err := http.Get("https://ipinfo.io/json")
+	resp, err := httpGet("https://ipinfo.io/json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}
@@ -87,7 +87,7 @@ func GetLocationByZipcode(zipcode string) (*Location, error) {
 	apiURL := baseURL + url.PathEscape(zipcode)
 
 	// Make the request
-	resp, err := http.Get(apiURL)
+	resp, err := httpGet(apiURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to make request: %w", err)
 	}

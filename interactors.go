@@ -3,93 +3,169 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 )
 
-// readFromStdin reads data from stdin if available
-func readFromStdin(rawInput string) (string, string, bool, bool) {
-	if rawInput == "" {
-		// Check if input is being piped in (stdin)
-		info, err := os.Stdin.Stat()
-		stdinHasData := (err == nil && info.Mode()&os.ModeCharDevice == 0)
+type reportKind int
 
-		if !stdinHasData {
-			return "", "", false, false
-		}
+const (
+	metarReport reportKind = iota
+	tafReport
+)
 
-		// Read from stdin if data is piped in
-		scanner := bufio.NewScanner(os.Stdin)
-
-		// First, read the complete input which might span multiple lines
-		var inputBuilder strings.Builder
-		for scanner.Scan() {
-			line := scanner.Text()
-			inputBuilder.WriteString(line)
-			inputBuilder.WriteString("\n") // Preserve line breaks
-		}
-
-		rawInput = strings.TrimSpace(inputBuilder.String())
-	}
-
-	// If we couldn't read any data, return
-	if rawInput == "" {
-		return "", "", false, false
-	}
-
-	// Try to extract station code from the first line of raw input
-	lines := strings.Split(rawInput, "\n")
-	firstLine := lines[0]
-	parts := strings.Fields(firstLine)
-
-	if len(parts) > 0 {
-		// Determine if input is a TAF or METAR
-		// Look for TAF-specific keywords and patterns
-		isTAF := strings.HasPrefix(strings.TrimSpace(firstLine), "TAF") ||
-			strings.Contains(rawInput, "TEMPO") ||
-			strings.Contains(rawInput, "BECMG") ||
-			strings.Contains(rawInput, "PROB") ||
-			// The following regex matches a typical TAF valid period format (e.g., 1106/1212)
-			regexp.MustCompile(`\d{4}/\d{4}`).MatchString(rawInput)
-
-		// If the first token is "TAF", use the second token as the station code
-		stationCode := parts[0]
-		if stationCode == "TAF" && len(parts) > 1 {
-			stationCode = parts[1]
-		}
-
-		return stationCode, rawInput, true, isTAF
-	}
-
-	return "", "", false, false
+// report is one METAR or TAF found in piped input
+type report struct {
+	Kind    reportKind
+	Station string
+	Raw     string
 }
 
-// getStationCodeFromArgs gets station code from command-line args
-func getStationCodeFromArgs(args []string) (string, error) {
-	if len(args) < 1 {
-		return "", fmt.Errorf("no station code provided")
+var (
+	reportStationRegex  = regexp.MustCompile(`^[A-Z][A-Z0-9]{3}$`)
+	reportIssueRegex    = regexp.MustCompile(`^\d{6}Z$`)
+	reportValidityRegex = regexp.MustCompile(`^\d{4}/\d{4}$`)
+	stationCodeRegex    = regexp.MustCompile(`^[A-Z0-9]{4}$`)
+)
+
+var reportHeaderKeywords = []string{"TAF", "METAR", "SPECI", "AMD", "COR", "RTD"}
+
+// readPipedStdin returns the trimmed stdin contents when stdin is a pipe or file, and "" for a terminal
+func readPipedStdin() (string, error) {
+	info, err := os.Stdin.Stat()
+	if err != nil || info.Mode()&os.ModeCharDevice != 0 {
+		return "", nil
 	}
 
-	stationCode := strings.ToUpper(strings.TrimSpace(args[0]))
+	input, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return "", fmt.Errorf("error reading stdin: %w", err)
+	}
+	return strings.TrimSpace(string(input)), nil
+}
 
-	// Check for AUTO keyword
-	if stationCode == "AUTO" {
-		return "AUTO", nil // Return AUTO instead of handling it here
+// splitReports splits pasted text into reports. A report starts at a line that opens with a
+// report header and runs until the next header or an "=" terminator, so the indented
+// continuation lines of a multi-line TAF stay with their report.
+func splitReports(input string) []report {
+	var reports []report
+	var current, pendingKeywords []string
+
+	flush := func() {
+		if len(current) > 0 {
+			reports = append(reports, classifyReport(strings.Join(current, "\n")))
+			current = nil
+		}
 	}
 
-	// Check for zipcode format (5-digit or ZIP+4)
-	zipRegex := regexp.MustCompile(`^\d{5}(-\d{4})?$`)
-	if zipRegex.MatchString(stationCode) {
-		return stationCode, nil // Return zipcode instead of handling it here
+	for _, line := range strings.Split(input, "\n") {
+		segments := strings.Split(line, "=")
+		for segmentIndex, segment := range segments {
+			fields := strings.Fields(segment)
+			switch {
+			case len(fields) == 0:
+			case isKeywordOnly(fields):
+				flush()
+				pendingKeywords = append(pendingKeywords, fields...)
+			case len(pendingKeywords) > 0:
+				current = []string{strings.Join(pendingKeywords, " ") + " " + strings.TrimSpace(segment)}
+				pendingKeywords = nil
+			case isReportStart(fields):
+				flush()
+				current = []string{strings.TrimSpace(segment)}
+			default:
+				current = append(current, strings.TrimRight(segment, " \t\r"))
+			}
+			if segmentIndex < len(segments)-1 {
+				flush()
+			}
+		}
+	}
+	flush()
+
+	return reports
+}
+
+func isKeywordOnly(fields []string) bool {
+	for _, field := range fields {
+		if !slices.Contains(reportHeaderKeywords, field) {
+			return false
+		}
+	}
+	return true
+}
+
+func isReportStart(fields []string) bool {
+	if slices.Contains(reportHeaderKeywords, fields[0]) {
+		return true
+	}
+	return len(fields) > 1 && reportStationRegex.MatchString(fields[0]) &&
+		(reportIssueRegex.MatchString(fields[1]) || reportValidityRegex.MatchString(fields[1]))
+}
+
+// classifyReport decides METAR or TAF from the header alone: an explicit TAF, METAR or SPECI
+// keyword wins, otherwise a ddhh/ddhh validity period after the station (with or without an
+// issue time before it) marks a TAF. Trend groups such as TEMPO occur in both report types.
+func classifyReport(raw string) report {
+	fields := strings.Fields(raw)
+	kind := metarReport
+	hasTypeKeyword := false
+
+	i := 0
+	for ; i < len(fields) && slices.Contains(reportHeaderKeywords, fields[i]); i++ {
+		switch fields[i] {
+		case "TAF":
+			kind = tafReport
+			hasTypeKeyword = true
+		case "METAR", "SPECI":
+			kind = metarReport
+			hasTypeKeyword = true
+		}
 	}
 
-	// Check for ICAO format
-	if len(stationCode) != 4 {
-		return "", fmt.Errorf("invalid station code: must be 4 characters")
+	var station string
+	if i < len(fields) {
+		station = fields[i]
 	}
 
-	return stationCode, nil
+	if !hasTypeKeyword {
+		after := fields[min(i+1, len(fields)):]
+		if len(after) > 0 && reportIssueRegex.MatchString(after[0]) {
+			after = after[1:]
+		}
+		if len(after) > 0 && reportValidityRegex.MatchString(after[0]) {
+			kind = tafReport
+		}
+	}
+
+	return report{Kind: kind, Station: station, Raw: raw}
+}
+
+// stationResolver turns user input (ICAO code, US zipcode or AUTO) into an ICAO station code
+type stationResolver struct {
+	nearest   func(radiusMiles float64) (string, error)
+	byZipcode func(zipcode string, radiusMiles float64) (string, error)
+}
+
+var networkStationResolver = stationResolver{
+	nearest:   ProcessAutoCommand,
+	byZipcode: ProcessZipcode,
+}
+
+func (r stationResolver) resolve(input string, radiusMiles float64) (string, error) {
+	code := strings.ToUpper(strings.TrimSpace(input))
+	switch {
+	case code == "AUTO":
+		return r.nearest(radiusMiles)
+	case zipRegex.MatchString(code):
+		return r.byZipcode(code, radiusMiles)
+	case !stationCodeRegex.MatchString(code):
+		return "", fmt.Errorf("invalid station code %q: must be a 4-character ICAO code, a US zipcode, or AUTO", input)
+	}
+	return code, nil
 }
 
 // promptForStationCode prompts the user for a station code
@@ -100,9 +176,5 @@ func promptForStationCode() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error reading input: %w", err)
 	}
-
-	stationCode := strings.ToUpper(strings.TrimSpace(input))
-
-	// Return the raw input instead of processing it here
-	return stationCode, nil
+	return input, nil
 }

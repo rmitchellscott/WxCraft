@@ -4,16 +4,34 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
 )
 
+const userAgent = "WxCraft"
+
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+var (
+	siteNameRegex    = regexp.MustCompile(`Site:\s+(.+)`)
+	siteStateRegex   = regexp.MustCompile(`State:\s+(.+)`)
+	siteCountryRegex = regexp.MustCompile(`Country:\s+(.+)`)
+)
+
+func httpGet(url string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	return httpClient.Do(req)
+}
+
 // fetchData fetches data from a URL for a given station code
 func fetchData(urlTemplate string, stationCode string, dataType string) (string, error) {
-	url := fmt.Sprintf(urlTemplate, stationCode)
-
-	resp, err := http.Get(url)
+	resp, err := httpGet(fmt.Sprintf(urlTemplate, url.QueryEscape(stationCode)))
 	if err != nil {
 		return "", fmt.Errorf("error fetching %s: %w", dataType, err)
 	}
@@ -48,78 +66,35 @@ func FetchTAF(stationCode string) (string, error) {
 
 // FetchSiteInfo fetches site information for a station from the Aviation Weather API
 func FetchSiteInfo(stationCode string) (SiteInfo, error) {
-	// Default site info in case of error
-	defaultSiteInfo := SiteInfo{
-		Name:    stationCode,
-		State:   "",
-		Country: "",
-	}
+	defaultSiteInfo := SiteInfo{Name: stationCode}
 
-	// API endpoint for station information
-	url := fmt.Sprintf("https://aviationweather.gov/api/data/stationinfo?ids=%s", stationCode)
-
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	// Make the request
-	resp, err := client.Get(url)
+	text, err := fetchData("https://aviationweather.gov/api/data/stationinfo?ids=%s", stationCode, "site info")
 	if err != nil {
-		return defaultSiteInfo, fmt.Errorf("error fetching site data: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return defaultSiteInfo, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return defaultSiteInfo, err
 	}
 
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return defaultSiteInfo, fmt.Errorf("error reading response: %w", err)
+	siteInfo := SiteInfo{
+		Name:  firstSubmatch(siteNameRegex, text),
+		State: firstSubmatch(siteStateRegex, text),
 	}
 
-	// Parse the text response using regex
-	text := string(body)
-
-	// Extract site information using regular expressions
-	var siteName, state, country string
-
-	// Match Site: line
-	siteRegex := regexp.MustCompile(`Site:\s+(.+)`)
-	siteMatches := siteRegex.FindStringSubmatch(text)
-	if len(siteMatches) > 1 {
-		siteName = strings.TrimSpace(siteMatches[1])
+	country := firstSubmatch(siteCountryRegex, text)
+	if len(country) == 2 {
+		country = GetCountryName(country)
 	}
+	siteInfo.Country = country
 
-	// Match State: line
-	stateRegex := regexp.MustCompile(`State:\s+(.+)`)
-	stateMatches := stateRegex.FindStringSubmatch(text)
-	if len(stateMatches) > 1 {
-		state = strings.TrimSpace(stateMatches[1])
-	}
-
-	// Match Country: line
-	countryRegex := regexp.MustCompile(`Country:\s+(.+)`)
-	countryMatches := countryRegex.FindStringSubmatch(text)
-	if len(countryMatches) > 1 {
-		country = strings.TrimSpace(countryMatches[1])
-
-		// If we have a country code, convert it to the full name
-		if len(country) == 2 {
-			country = GetCountryName(country)
-		}
-	}
-
-	// If we couldn't extract site name, return an error (state/country optional)
-	if siteName == "" {
+	if siteInfo.Name == "" {
 		return defaultSiteInfo, fmt.Errorf("could not extract site name from response")
 	}
 
-	return SiteInfo{
-		Name:    siteName,
-		State:   state,
-		Country: country,
-	}, nil
+	return siteInfo, nil
+}
+
+func firstSubmatch(re *regexp.Regexp, text string) string {
+	matches := re.FindStringSubmatch(text)
+	if len(matches) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(matches[1])
 }
