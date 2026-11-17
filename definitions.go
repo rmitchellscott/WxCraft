@@ -76,14 +76,14 @@ var specialConditions = map[string]string{
 
 // Military airfield color states, best to worst
 var militaryColorStates = map[string]string{
-	"BLU":  "blue",
-	"WHT":  "white",
-	"GRN":  "green",
-	"YLO":  "yellow",
-	"YLO1": "yellow 1",
-	"YLO2": "yellow 2",
-	"AMB":  "amber",
-	"RED":  "red",
+	"BLU":  "blue: visibility at least 8 km and cloud base at least 2500 feet",
+	"WHT":  "white: visibility at least 5 km and cloud base at least 1500 feet",
+	"GRN":  "green: visibility at least 3.7 km and cloud base at least 700 feet",
+	"YLO":  "yellow: visibility at least 1.6 km and cloud base at least 300 feet",
+	"YLO1": "yellow 1: visibility at least 2.5 km and cloud base at least 500 feet",
+	"YLO2": "yellow 2: visibility at least 1.6 km and cloud base at least 300 feet",
+	"AMB":  "amber: visibility at least 0.8 km and cloud base at least 200 feet",
+	"RED":  "red: visibility less than 0.8 km or cloud base less than 200 feet",
 }
 
 // Runway state group deposit types (WMO code table 0919)

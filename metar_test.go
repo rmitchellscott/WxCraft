@@ -259,7 +259,7 @@ func TestMETARMilitaryColorState(t *testing.T) {
 	m := DecodeMETAR("EBLB 081425Z 15007KT 9999 FEW030 15/M04 Q1010 BLACKBLU")
 	assert.Empty(t, m.Weather)
 	assert.Equal(t, []string{"BLACKBLU"}, m.SpecialCodes)
-	assert.Equal(t, "military color state blue, airfield unusable for non-weather reasons (BLACKBLU)",
+	assert.Equal(t, "military color state blue: visibility at least 8 km and cloud base at least 2500 feet, airfield unusable for non-weather reasons (BLACKBLU)",
 		describeSpecialCode("BLACKBLU"))
 }
 
