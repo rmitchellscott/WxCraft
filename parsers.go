@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -62,24 +61,11 @@ func absDuration(d time.Duration) time.Duration {
 
 // parseWind parses a wind string in the format "DDDSSKT", "DDDSSGGKT", "DDDSSMPS", or "DDDSSGGMPS"
 func parseWind(windStr string) Wind {
-	// Check for special cases where wind speed consists of zeros
-	zeroKTRegex := regexp.MustCompile(`^(VRB|\d{3})(0+)KT$`)
-	zeroMPSRegex := regexp.MustCompile(`^(VRB|\d{3})(0+)MPS$`)
-
-	// Handle zero wind speed cases
-	if matches := zeroKTRegex.FindStringSubmatch(windStr); matches != nil {
+	if matches := zeroWindRegex.FindStringSubmatch(windStr); matches != nil {
 		return Wind{
 			Direction: matches[1],
 			Speed:     ptr.To(0),
-			Unit:      "KT",
-		}
-	}
-
-	if matches := zeroMPSRegex.FindStringSubmatch(windStr); matches != nil {
-		return Wind{
-			Direction: matches[1],
-			Speed:     ptr.To(0),
-			Unit:      "MPS",
+			Unit:      matches[3],
 		}
 	}
 
@@ -121,18 +107,6 @@ func parseWind(windStr string) Wind {
 	}
 
 	return Wind{}
-}
-
-// parseWindVariation parses a wind variation string in the format "DDDVDDD"
-func parseWindVariation(varStr string) string {
-	matches := windVarRegex.FindStringSubmatch(varStr)
-	if matches == nil {
-		return ""
-	}
-
-	// The regex already ensures these are valid directional values
-	// No need to perform additional validation, return the formatted string
-	return varStr
 }
 
 // parseCloud parses a cloud string in the format "CCCHHH", "CCCHHHTTT" or "CCCTTTHHH"
@@ -225,27 +199,10 @@ func parseSeaState(seaStr string) SeaState {
 func parseWindShear(wsStr string) WindShear {
 	ws := WindShear{Raw: wsStr}
 
-	// Direct handling for common patterns
-	// 1. "WS ALL RWY"
-	if wsStr == "WS ALL RWY" {
-		ws.Type = "RWY"
-		ws.Phase = "ALL"
-		return ws
-	}
-
-	// 2. "WS R##" pattern (e.g. "WS R20")
-	if len(wsStr) > 3 && wsStr[:3] == "WS " && wsStr[3] == 'R' && len(wsStr) >= 5 {
-		runway := wsStr[4:]
-		ws.Type = "RWY"
-		ws.Runway = runway
-		return ws
-	}
-
-	// Try runway wind shear format
 	if matches := windShearRwyRegex.FindStringSubmatch(wsStr); matches != nil {
 		ws.Type = "RWY"
-		ws.Phase = matches[1]  // TKOF, LDG, or ALL
-		ws.Runway = matches[2] // Runway identifier (may be empty for ALL RWY)
+		ws.Phase = matches[1]
+		ws.Runway = matches[2] + matches[3]
 		return ws
 	}
 
@@ -346,76 +303,6 @@ func parseRunwayCondition(condStr string) RunwayCondition {
 	}
 
 	return cond
-}
-
-// parseForecastElement decodes one forecast group into forecast and reports whether it recognized it
-func parseForecastElement(forecast *Forecast, part string) bool {
-	if windRegex.MatchString(part) || windRegexMPS.MatchString(part) {
-		forecast.Wind = parseWind(part)
-		return true
-	}
-
-	if windVarRegex.MatchString(part) {
-		forecast.WindVariation = part
-		return true
-	}
-
-	if windShearAltRegex.MatchString(part) {
-		forecast.WindShear = append(forecast.WindShear, parseWindShear(part))
-		return true
-	}
-
-	if visRegexP.MatchString(part) || isVisibilityInMeters(part) {
-		forecast.Visibility = part
-		return true
-	}
-
-	switch part {
-	case "CAVOK":
-		forecast.CAVOK = true
-		forecast.Visibility = "CAVOK"
-		return true
-	case "NSW":
-		forecast.NSW = true
-		return true
-	case "NSC":
-		forecast.NSC = true
-		return true
-	}
-
-	if matches := vvRegex.FindStringSubmatch(part); matches != nil {
-		forecast.VertVis, _ = strconv.Atoi(matches[1])
-		return true
-	}
-
-	if cloudRegex.MatchString(part) {
-		forecast.Clouds = append(forecast.Clouds, parseCloud(part))
-		return true
-	}
-
-	if matches := tafQNHInchesRegex.FindStringSubmatch(part); matches != nil {
-		hundredths, _ := strconv.Atoi(matches[1])
-		forecast.Pressure = float64(hundredths) / 100.0
-		forecast.PressureUnit = "inHg"
-		return true
-	}
-
-	if matches := tafIcingRegex.FindStringSubmatch(part); matches != nil {
-		forecast.Icing = append(forecast.Icing, parseHazardLayer(matches, part))
-		return true
-	}
-
-	if matches := tafTurbulenceRegex.FindStringSubmatch(part); matches != nil {
-		forecast.Turbulence = append(forecast.Turbulence, parseHazardLayer(matches, part))
-		return true
-	}
-
-	if isWeatherCode(part) {
-		forecast.Weather = append(forecast.Weather, part)
-		return true
-	}
-
-	return false
 }
 
 // parseHazardLayer decodes the intensity, base (hundreds of feet), and thickness (thousands of feet)

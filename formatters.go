@@ -569,6 +569,11 @@ func FormatMETAR(m METAR) string {
 	}
 	sb.WriteString("\n")
 
+	if m.ReportType != "" {
+		labelColor.Fprint(&sb, "Report: ")
+		sb.WriteString(reportTypes[m.ReportType] + "\n")
+	}
+
 	// Time
 	if !m.Time.IsZero() {
 		relTime := relativeTimeString(m.Time)
@@ -585,22 +590,7 @@ func FormatMETAR(m METAR) string {
 	windStr := formatWind(m.Wind)
 	if windStr != "" {
 		labelColor.Fprint(&sb, "Wind: ")
-		sb.WriteString(windStr)
-
-		// Add wind variation if available
-		if strings.Contains(m.WindVariation, "/") {
-			sb.WriteString(" (variation not reported)")
-		} else if m.WindVariation != "" {
-			// Split the variation at the 'V' character
-			parts := strings.Split(m.WindVariation, "V")
-			if len(parts) == 2 {
-				sb.WriteString(fmt.Sprintf(" (varying between %s° and %s°)", parts[0], parts[1]))
-			} else {
-				// Fallback in case the format is unexpected
-				sb.WriteString(" (varying between " + m.WindVariation + ")")
-			}
-		}
-		sb.WriteString("\n")
+		sb.WriteString(windStr + formatWindVariation(m.WindVariation) + "\n")
 	}
 
 	// Visibility
@@ -698,25 +688,14 @@ func FormatMETAR(m METAR) string {
 		sb.WriteString(fmt.Sprintf("%d°C | %d°F\n", *m.DewPoint, dewPointF))
 	}
 
-	// Pressure with conversion to opposite unit
-	if m.Pressure > 0 {
+	if m.Pressure > 0 || m.PressureUnit != "" {
 		labelColor.Fprint(&sb, "Pressure: ")
-		if m.PressureUnit == "inHg" {
-			// Convert inHg to hPa/millibars
-			pressureHpa := InHgToMillibars(m.Pressure)
-			sb.WriteString(fmt.Sprintf("%.2f inHg | %.1f hPa\n", m.Pressure, pressureHpa))
-		} else if m.PressureUnit == "hPa" {
-			// Convert hPa/millibars to inHg
-			pressureInHg := m.Pressure / 33.8639
-			sb.WriteString(fmt.Sprintf("%.1f hPa | %.2f inHg\n", m.Pressure, pressureInHg))
-		} else {
-			// If no unit is specified, default to inHg with hPa conversion
-			pressureHpa := InHgToMillibars(m.Pressure)
-			sb.WriteString(fmt.Sprintf("%.2f inHg | %.1f hPa\n", m.Pressure, pressureHpa))
-		}
-	} else if m.PressureUnit != "" {
-		labelColor.Fprint(&sb, "Pressure: ")
-		sb.WriteString("Not available\n")
+		sb.WriteString(formatPressure(m.Pressure, m.PressureUnit) + "\n")
+	}
+
+	if m.StationPressure > 0 {
+		labelColor.Fprint(&sb, "Station Pressure: ")
+		sb.WriteString(fmt.Sprintf("%.1f hPa\n", m.StationPressure))
 	}
 
 	for _, sea := range m.SeaStates {
@@ -824,6 +803,14 @@ func FormatMETAR(m METAR) string {
 		}
 	}
 
+	if len(m.Trends) > 0 {
+		sb.WriteString("\n")
+		sectionColor.Fprintln(&sb, "Trends:")
+		for i, trend := range m.Trends {
+			formatPeriod(&sb, i+1, trend, "onward")
+		}
+	}
+
 	// Special codes
 	if len(m.SpecialCodes) > 0 {
 		sb.WriteString("\n")
@@ -887,6 +874,25 @@ func FormatTAF(t TAF) string {
 	}
 	sb.WriteString("\n")
 
+	var status []string
+	for _, flag := range []struct {
+		set         bool
+		description string
+	}{
+		{t.Amended, "amended"},
+		{t.Corrected, "corrected"},
+		{t.Nil, "missing (NIL)"},
+		{t.Cancelled, "cancelled"},
+	} {
+		if flag.set {
+			status = append(status, flag.description)
+		}
+	}
+	if len(status) > 0 {
+		labelColor.Fprint(&sb, "Report: ")
+		sb.WriteString(capitalizeFirst(strings.Join(status, ", ")) + "\n")
+	}
+
 	// Issued time
 	if !t.Time.IsZero() {
 		relTime := relativeTimeString(t.Time)
@@ -908,115 +914,175 @@ func FormatTAF(t TAF) string {
 		sb.WriteString("\n")
 	}
 
-	// Forecast periods
-	sb.WriteString("\n")
-	sectionColor.Fprintln(&sb, "Forecast Periods:")
-
-	for i, forecast := range t.Forecasts {
-		// Format the forecast type
-		var periodType string
-		switch {
-		case forecast.Type == "BASE":
-			periodType = "Base Forecast"
-		case forecast.Type == "FM":
-			periodType = "From"
-		case forecast.Type == "TEMPO":
-			periodType = "Temporary"
-		case forecast.Type == "BECMG":
-			periodType = "Becoming"
-		case forecast.Type == "INTER":
-			periodType = "Intermittent"
-		case forecast.Type == "PROB":
-			periodType = "Probable"
-		default:
-			periodType = forecast.Type
-		}
-		if forecast.Probability > 0 {
-			periodType = fmt.Sprintf("%d%% Probability, %s", forecast.Probability, periodType)
-		}
-
-		// Period header with number
+	if len(t.Forecasts) > 0 {
 		sb.WriteString("\n")
-		numberColor.Fprintf(&sb, "%d. ", i+1)
-		sb.WriteString(periodType)
-
-		// Time period
-		if !forecast.From.IsZero() {
-			if forecast.To.IsZero() {
-				sb.WriteString(" ")
-				dateColor.Fprint(&sb, forecast.From.Format("2006-01-02 15:04 UTC"))
-				sb.WriteString(" until end of forecast")
-			} else {
-				sb.WriteString(" ")
-				dateColor.Fprint(&sb, forecast.From.Format("2006-01-02 15:04 UTC"))
-				sb.WriteString(" to ")
-				dateColor.Fprint(&sb, forecast.To.Format("2006-01-02 15:04 UTC"))
-			}
-		}
-		sb.WriteString("\n")
-
-		// Wind
-		windStr := formatWind(forecast.Wind)
-		if windStr != "" {
-			sb.WriteString("   ")
-			labelColor.Fprint(&sb, "Wind: ")
-			sb.WriteString(windStr + "\n")
-		}
-
-		// Visibility
-		visibilityDesc := formatVisibility(forecast.Visibility)
-		if visibilityDesc != "" {
-			sb.WriteString("   ")
-			labelColor.Fprint(&sb, "Visibility: ")
-			sb.WriteString(visibilityDesc + "\n")
-		}
-
-		// Vertical visibility
-		if forecast.VertVis > 0 {
-			sb.WriteString("   ")
-			labelColor.Fprint(&sb, "Vertical Visibility: ")
-			sb.WriteString(fmt.Sprintf("%s feet\n", formatNumberWithCommas(forecast.VertVis*100)))
-		}
-
-		// Weather
-		weatherStr := formatWeather(forecast.Weather)
-		if weatherStr != "" {
-			sb.WriteString("   ")
-			labelColor.Fprint(&sb, "Weather: ")
-			sb.WriteString(capitalizeFirst(weatherStr) + "\n")
-		}
-
-		// Clouds
-		cloudStr := formatClouds(forecast.Clouds)
-		if cloudStr != "" {
-			sb.WriteString("   ")
-			labelColor.Fprint(&sb, "Clouds: ")
-			sb.WriteString(capitalizeFirst(cloudStr) + "\n")
-		}
-
-		// Wind Shear
-		if len(forecast.WindShear) > 0 {
-			sb.WriteString("   ")
-			labelColor.Fprint(&sb, "Wind Shear: ")
-			for i, ws := range forecast.WindShear {
-				if i > 0 {
-					sb.WriteString("   ")
-				}
-				if ws.Type == "RWY" {
-					if ws.Runway != "" {
-						sb.WriteString(fmt.Sprintf("%s runway %s", ws.Phase, ws.Runway))
-					} else {
-						sb.WriteString(fmt.Sprintf("%s all runways", ws.Phase))
-					}
-				} else if ws.Type == "ALT" {
-					sb.WriteString(formatAltitudeWindShear(ws))
-				}
-				sb.WriteString("\n")
-			}
+		sectionColor.Fprintln(&sb, "Forecast Periods:")
+		for i, forecast := range t.Forecasts {
+			formatPeriod(&sb, i+1, forecast, "until end of forecast")
 		}
 	}
 
+	if len(t.Temperatures) > 0 {
+		sb.WriteString("\n")
+		sectionColor.Fprintln(&sb, "Temperatures:")
+		for _, temperature := range t.Temperatures {
+			kind := map[string]string{"MAX": "Maximum", "MIN": "Minimum"}[temperature.Kind]
+			if kind == "" {
+				kind = "Forecast"
+			}
+			sb.WriteString(fmt.Sprintf("  %s %d°C | %d°F at ", kind, temperature.Celsius, CelsiusToFahrenheit(temperature.Celsius)))
+			dateColor.Fprint(&sb, temperature.At.Format("2006-01-02 15:04 UTC"))
+			sb.WriteString("\n")
+		}
+	}
+
+	if t.Remarks != "" {
+		sb.WriteString("\n")
+		sectionColor.Fprintln(&sb, "Remarks:")
+		sb.WriteString("  " + t.Remarks + "\n")
+	}
+
 	return sb.String()
+}
+
+// formatPeriod writes a numbered TAF forecast period or METAR trend group. openEnded follows the
+// start time of a period that has no end time.
+func formatPeriod(sb *strings.Builder, number int, forecast Forecast, openEnded string) {
+	periodType, ok := periodTypes[forecast.Type]
+	if !ok {
+		periodType = forecast.Type
+	}
+	if forecast.Probability > 0 {
+		periodType = fmt.Sprintf("%d%% Probability, %s", forecast.Probability, periodType)
+	}
+
+	sb.WriteString("\n")
+	numberColor.Fprintf(sb, "%d. ", number)
+	sb.WriteString(periodType)
+
+	writeTime := func(prefix string, at time.Time) {
+		sb.WriteString(prefix)
+		dateColor.Fprint(sb, at.Format("2006-01-02 15:04 UTC"))
+	}
+	switch {
+	case !forecast.At.IsZero():
+		writeTime(" at ", forecast.At)
+	case !forecast.From.IsZero() && !forecast.To.IsZero():
+		writeTime(" ", forecast.From)
+		writeTime(" to ", forecast.To)
+	case !forecast.From.IsZero():
+		writeTime(" ", forecast.From)
+		sb.WriteString(" " + openEnded)
+	case !forecast.To.IsZero():
+		writeTime(" until ", forecast.To)
+	}
+	sb.WriteString("\n")
+
+	writeLine := func(label, value string) {
+		sb.WriteString("   ")
+		labelColor.Fprint(sb, label+": ")
+		sb.WriteString(value + "\n")
+	}
+
+	if windStr := formatWind(forecast.Wind); windStr != "" {
+		writeLine("Wind", windStr+formatWindVariation(forecast.WindVariation))
+	}
+	if visibilityDesc := formatVisibility(forecast.Visibility); visibilityDesc != "" {
+		writeLine("Visibility", visibilityDesc)
+	}
+	if forecast.MinVisibility != "" {
+		writeLine("Minimum Visibility", formatVisibility(forecast.MinVisibility))
+	}
+	if forecast.VertVis > 0 {
+		writeLine("Vertical Visibility", formatNumberWithCommas(forecast.VertVis*100)+" feet")
+	}
+
+	switch {
+	case len(forecast.Weather) > 0:
+		writeLine("Weather", capitalizeFirst(formatWeather(forecast.Weather)))
+	case forecast.NSW:
+		writeLine("Weather", "No significant weather")
+	}
+
+	switch {
+	case len(forecast.Clouds) > 0:
+		writeLine("Clouds", capitalizeFirst(formatClouds(forecast.Clouds)))
+	case forecast.NSC:
+		writeLine("Clouds", "No significant clouds")
+	}
+
+	if forecast.PressureUnit != "" {
+		writeLine("Pressure", formatPressure(forecast.Pressure, forecast.PressureUnit))
+	}
+
+	if len(forecast.WindShear) > 0 {
+		sb.WriteString("   ")
+		labelColor.Fprint(sb, "Wind Shear: ")
+		for i, ws := range forecast.WindShear {
+			if i > 0 {
+				sb.WriteString("   ")
+			}
+			if ws.Type == "RWY" {
+				if ws.Runway != "" {
+					sb.WriteString(fmt.Sprintf("%s runway %s", ws.Phase, ws.Runway))
+				} else {
+					sb.WriteString(fmt.Sprintf("%s all runways", ws.Phase))
+				}
+			} else if ws.Type == "ALT" {
+				sb.WriteString(formatAltitudeWindShear(ws))
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	for _, layer := range forecast.Icing {
+		writeLine("Icing", capitalizeFirst(formatHazardLayer(layer, icingIntensities)))
+	}
+	for _, layer := range forecast.Turbulence {
+		writeLine("Turbulence", capitalizeFirst(formatHazardLayer(layer, turbulenceIntensities)))
+	}
+}
+
+// formatWindVariation returns the suffix that follows the wind description for a dddVddd group
+func formatWindVariation(variation string) string {
+	if variation == "" {
+		return ""
+	}
+	if strings.Contains(variation, "/") {
+		return " (variation not reported)"
+	}
+	parts := strings.Split(variation, "V")
+	if len(parts) != 2 {
+		return " (varying between " + variation + ")"
+	}
+	return fmt.Sprintf(" (varying between %s° and %s°)", parts[0], parts[1])
+}
+
+// formatPressure shows the reported pressure followed by its conversion; zero means not reported
+func formatPressure(pressure float64, unit string) string {
+	switch {
+	case pressure == 0:
+		return "Not available"
+	case unit == "hPa":
+		return fmt.Sprintf("%.1f hPa | %.2f inHg", pressure, pressure/33.8639)
+	}
+	return fmt.Sprintf("%.2f inHg | %.1f hPa", pressure, InHgToMillibars(pressure))
+}
+
+func formatHazardLayer(layer HazardLayer, intensities map[string]string) string {
+	description, ok := intensities[layer.Intensity]
+	if !ok {
+		description = "intensity code " + layer.Intensity
+	}
+	base := "the surface"
+	if layer.BaseFeet > 0 {
+		base = formatNumberWithCommas(layer.BaseFeet) + " feet"
+	}
+	if layer.ThicknessFeet == 0 {
+		return fmt.Sprintf("%s from %s", description, base)
+	}
+	top := formatNumberWithCommas(layer.BaseFeet + layer.ThicknessFeet)
+	return fmt.Sprintf("%s from %s to %s feet", description, base, top)
 }
 
 // capitalizeFirst capitalizes the first letter of a string

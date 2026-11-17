@@ -71,6 +71,7 @@ var specialConditions = map[string]string{
 	"NCD":   "no clouds detected",
 	"CAVOK": "ceiling and visibility OK",
 	"RTD":   "routine delayed (late) observation",
+	"NIL":   "missing report",
 	"M":     "a group was not reported",
 }
 
@@ -122,6 +123,48 @@ var seaStates = map[string]string{
 	"9": "phenomenal",
 }
 
+var reportTypes = map[string]string{
+	"METAR": "Routine (METAR)",
+	"SPECI": "Special (SPECI)",
+}
+
+var periodTypes = map[string]string{
+	"BASE":  "Base Forecast",
+	"FM":    "From",
+	"TEMPO": "Temporary",
+	"BECMG": "Becoming",
+	"INTER": "Intermittent",
+	"PROB":  "Probable",
+}
+
+// Icing intensity and type for the military 6IchhhT group (WMO code table 1734)
+var icingIntensities = map[string]string{
+	"0": "no icing",
+	"1": "light icing",
+	"2": "light icing in cloud",
+	"3": "light icing in precipitation",
+	"4": "moderate icing",
+	"5": "moderate icing in cloud",
+	"6": "moderate icing in precipitation",
+	"7": "severe icing",
+	"8": "severe icing in cloud",
+	"9": "severe icing in precipitation",
+}
+
+// Turbulence intensity for the military 5Bhhht group (WMO code table 1738)
+var turbulenceIntensities = map[string]string{
+	"0": "no turbulence",
+	"1": "light turbulence",
+	"2": "occasional moderate turbulence in clear air",
+	"3": "frequent moderate turbulence in clear air",
+	"4": "occasional moderate turbulence in cloud",
+	"5": "frequent moderate turbulence in cloud",
+	"6": "occasional severe turbulence in clear air",
+	"7": "frequent severe turbulence in clear air",
+	"8": "occasional severe turbulence in cloud",
+	"9": "frequent severe turbulence in cloud",
+}
+
 // Words that open the plain-language notes US military TAFs append after the forecast groups,
 // such as "LAST NO AMDS AFT 0807 NXT 1005", whose 4-digit times would otherwise read as visibility
 var tafPlainLanguageStarts = map[string]bool{
@@ -133,16 +176,6 @@ var tafPlainLanguageStarts = map[string]bool{
 	"COR":       true,
 }
 
-// TAF forecast types
-var forecastTypes = map[string]string{
-	"FM":     "from",
-	"BECMG":  "becoming",
-	"TEMPO":  "temporary",
-	"PROB30": "30% probability of",
-	"PROB40": "40% probability of",
-	"INTER":  "intermittent",
-}
-
 // Commonly used regular expressions
 var (
 	timeRegex         = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})Z$`)
@@ -150,9 +183,8 @@ var (
 	windRegexMPS      = regexp.MustCompile(`^(VRB|\d{3}|///)(\d{2,3}|//)(G(\d{2,3}))?MPS$|^(0+)(G\d{2})?MPS$`)
 	windVarRegex      = regexp.MustCompile(`^(\d{3}|///)V(\d{3}|///)$`)
 	windShearAltRegex = regexp.MustCompile(`^WS(\d{3})/(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
-	windShearRwyRegex = regexp.MustCompile(`^WS(\s+(TKOF|LDG|ALL)\s+RWY(\d{2}[LCR]?)?|\s+R(\d{2}[LCR]?)?)$`)
-	visRegexM         = regexp.MustCompile(`^M?(\d+(?:/\d+)?)SM$`)
-	visRegexP         = regexp.MustCompile(`^[MP]?(\d{1,2}|\d/\d{1,2})SM$`)
+	windShearRwyRegex = regexp.MustCompile(`^WS (?:(TKOF|LDG|ALL) RWY(\d{2}[LCR]?)?|R(?:WY)?(\d{2}[LCR]?))$`)
+	visRegexSM        = regexp.MustCompile(`^[MP]?\d+(?:/\d+)?SM$`)
 	visRegexNum       = regexp.MustCompile(`^\d{4}$`)
 	visRegexDir       = regexp.MustCompile(`^(\d{4})([NESW]{1,2})$`)
 	cloudRegex        = regexp.MustCompile(`^(SKC|CLR|FEW|SCT|BKN|OVC|///)(\d{3}|///)?(CB|TCU|///)?$|^(FEW|SCT|BKN|OVC)(CB|TCU)(\d{3})$`)
@@ -160,7 +192,6 @@ var (
 	tempOnlyRegex     = regexp.MustCompile(`^(M?)(\d{2})/(//)?$`)
 	pressureRegex     = regexp.MustCompile(`^A(\d{4})$`)
 	validRegex        = regexp.MustCompile(`^(\d{2})(\d{2})/(\d{2})(\d{2})$`)
-	probRegex         = regexp.MustCompile(`^PROB(\d{2})$`)
 	cavokRegex        = regexp.MustCompile(`^CAVOK$`)
 	// Enhanced runway condition regex that handles variable values, peak values and trend indicator
 	// Updated to correctly capture trend indicator both with and without a preceding slash
@@ -169,8 +200,7 @@ var (
 	runwayClearedRegex = regexp.MustCompile(`^R(\d{2}[CLR]?)/CLRD(\d{2}|//)$`)
 	vvRegex            = regexp.MustCompile(`^VV(\d{3})$`)
 	ndvRegex           = regexp.MustCompile(`^(\d{4,5})NDV$`)
-	eWindRegex         = regexp.MustCompile(`^E(\d{3})(\d{2,3})(G(\d{2,3}))?KT$`)
-	specialRegex       = regexp.MustCompile(`^(NOSIG|AUTO|COR|CCA|NSC|NCD|RTD)$`)
+	zeroWindRegex      = regexp.MustCompile(`^(VRB|\d{3})(0+)(KT|MPS)$`)
 )
 
 var (
@@ -184,8 +214,9 @@ var (
 	tafFromRegex          = regexp.MustCompile(`^FM(\d{2})(\d{2})(\d{2})$`)
 	tafDayTimeRegex       = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2})$`)
 	tafProbRegex          = regexp.MustCompile(`^PROB(\d{2})(TEMPO|INTER)?$`)
-	tafVisWholeRegex      = regexp.MustCompile(`^\d$`)
-	tafVisFractionRegex   = regexp.MustCompile(`^\d/\d{1,2}SM$`)
+	trendTimeRegex        = regexp.MustCompile(`^(FM|TL|AT)(\d{2})(\d{2})$`)
+	qfeRegex              = regexp.MustCompile(`^QFE ?(\d{3,4}(?:[./]\d)?)$`)
+	gluedPressureRegex    = regexp.MustCompile(`^([AQ]\d{4})(NOSIG|TEMPO|BECMG|RMK)$`)
 	tafTemperatureRegex   = regexp.MustCompile(`^T([XN]?)(M?)(\d{2})/(\d{2})(\d{2})Z*$`)
 	tafQNHInchesRegex     = regexp.MustCompile(`^QNH(\d{4})INS$`)
 	tafIcingRegex         = regexp.MustCompile(`^6(\d)(\d{3})(\d)$`)
@@ -289,11 +320,13 @@ type METAR struct {
 	Temperature      *int // Changed to pointer to represent missing value
 	DewPoint         *int // Using pointer to represent missing dew point
 	Pressure         float64
-	PressureUnit     string // "hPa" or "inHg"
+	PressureUnit     string  // "hPa" or "inHg"
+	StationPressure  float64 // QFE in hPa, reported in the body by some South American stations
 	Remarks          []Remark
 	RunwayConditions []RunwayCondition // Runway visual range
 	RunwayStates     []RunwayState     // Runway deposits, depth and braking
 	SeaStates        []SeaState        // Sea surface temperature and sea state (W group)
+	Trends           []Forecast        // TEMPO, BECMG, and INTER trend groups
 	SpecialCodes     []string          // Special codes like AUTO, NOSIG, etc.
 	Unhandled        []string
 }
@@ -320,10 +353,12 @@ type Forecast struct {
 	Probability   int       // PROBnn value; also set on a PROBnn TEMPO or PROBnn INTER period
 	From          time.Time // Start time of this forecast period
 	To            time.Time // End time of this forecast period (if applicable)
+	At            time.Time // METAR trend AThhmm time
 	Wind          Wind
 	WindVariation string
 	WindShear     []WindShear
 	Visibility    string
+	MinVisibility string // Directional minimum visibility (e.g., "1500NE")
 	CAVOK         bool
 	Weather       []string
 	NSW           bool // no significant weather

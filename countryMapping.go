@@ -47,14 +47,6 @@ func InitCountryCodeMap() error {
 		countryCodeMap[country.Code] = country.Name
 	}
 
-	// Print debug info
-	log.Printf("Loaded %d country codes", len(countryCodeMap))
-	if name, ok := countryCodeMap["US"]; ok {
-		log.Printf("US maps to: %s", name)
-	} else {
-		log.Printf("WARNING: US country code not found in mapping")
-	}
-
 	countryCodeMapInitialized = true
 	return nil
 }
@@ -75,6 +67,5 @@ func GetCountryName(code string) string {
 	}
 
 	// If not found, return the original code
-	log.Printf("Country code not found: %s", code)
 	return code
 }

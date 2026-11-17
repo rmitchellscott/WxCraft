@@ -288,3 +288,54 @@ func TestParseTime_ResolvesMonthNearestReference(t *testing.T) {
 	_, err := parseTime("321200Z", tafTestNow)
 	assert.Error(t, err)
 }
+
+func TestFormatTAF_MilitaryGroupsFlagsAndRemarks(t *testing.T) {
+	color.NoColor = true
+	taf := DecodeTAF("TAF AMD KBLV 080800Z 0808/0914 35012G20KT 9999 BKN015 620204 QNH2998INS BECMG 0810/0811 34012KT 9999 FEW250 WS020/24040KT 520009 QNH3003INS TX11/0821Z TN02/0812Z LAST NO AMDS AFT 0807 NXT 1005", tafTestNow)
+	taf.Time = time.Time{}
+
+	expected := `Station: KBLV
+Report: Amended
+Valid: 2025-03-08 08:00 UTC to 2025-03-09 14:00 UTC
+
+Forecast Periods:
+
+1. Base Forecast 2025-03-08 08:00 UTC to 2025-03-09 14:00 UTC
+   Wind: From 350° at 12 knots, gusting to 20 knots
+   Visibility: Unlimited visibility (greater than 10 kilometers)
+   Clouds: Broken clouds at 1,500 feet
+   Pressure: 29.98 inHg | 1015.2 hPa
+   Icing: Light icing in cloud from 2,000 feet to 6,000 feet
+
+2. Becoming 2025-03-08 10:00 UTC to 2025-03-08 11:00 UTC
+   Wind: From 340° at 12 knots
+   Visibility: Unlimited visibility (greater than 10 kilometers)
+   Clouds: Few clouds at 25,000 feet
+   Pressure: 30.03 inHg | 1016.9 hPa
+   Wind Shear: At 2,000 feet: From 240° at 40 knots
+   Turbulence: Occasional moderate turbulence in clear air from the surface to 9,000 feet
+
+Temperatures:
+  Maximum 11°C | 52°F at 2025-03-08 21:00 UTC
+  Minimum 2°C | 36°F at 2025-03-08 12:00 UTC
+
+Remarks:
+  LAST NO AMDS AFT 0807 NXT 1005
+`
+	assert.Equal(t, expected, FormatTAF(taf))
+}
+
+func TestFormatTAF_NilSignificantGroupsAndCancelled(t *testing.T) {
+	color.NoColor = true
+
+	significant := FormatTAF(DecodeTAF("TAF EGSS 080743Z 0807/0912 10008KT 7000 NSC BECMG 0909/0911 9999 NSW", tafTestNow))
+	assert.Contains(t, significant, "   Clouds: No significant clouds\n")
+	assert.Contains(t, significant, "   Weather: No significant weather\n")
+
+	cancelled := DecodeTAF("TAF AMD KXYZ 081100Z 0812/0912 CNL", tafTestNow)
+	cancelled.Time = time.Time{}
+	assert.Equal(t, `Station: KXYZ
+Report: Amended, cancelled
+Valid: 2025-03-08 12:00 UTC to 2025-03-09 12:00 UTC
+`, FormatTAF(cancelled))
+}

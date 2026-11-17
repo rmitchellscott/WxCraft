@@ -6,6 +6,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"k8s.io/utils/ptr"
 )
 
@@ -287,6 +288,7 @@ func TestMETARFormatGolden(t *testing.T) {
 	assert.Equal(t, "METAR", m.ReportType)
 
 	expected := `Station: KJFK
+Report: Routine (METAR)
 Wind: Calm
 Visibility: 10 statute miles
 Weather: Light rain
@@ -296,4 +298,89 @@ Dew Point: -1°C | 30°F
 Pressure: 30.01 inHg | 1016.3 hPa
 `
 	assert.Equal(t, expected, formatWithoutTime(m))
+}
+
+func TestMETARTrendGroups(t *testing.T) {
+	m := DecodeMETAR("METAR EGLL 171150Z 24015KT 9999 SCT030 12/08 Q1012 TEMPO FM1230 TL1400 4000 SHRA BKN014TCU BECMG AT1600 NSW NSC", metarTestReference)
+
+	assert.Empty(t, m.Unhandled)
+	assert.Equal(t, "9999", m.Visibility)
+	assert.Equal(t, []Forecast{
+		{
+			Type:       "TEMPO",
+			From:       utc(2026, time.March, 17, 12, 30),
+			To:         utc(2026, time.March, 17, 14, 0),
+			Visibility: "4000",
+			Weather:    []string{"SHRA"},
+			Clouds:     []Cloud{{Coverage: "BKN", Height: 1400, Type: "TCU"}},
+			Raw:        "TEMPO FM1230 TL1400 4000 SHRA BKN014TCU",
+		},
+		{
+			Type: "BECMG",
+			At:   utc(2026, time.March, 17, 16, 0),
+			NSW:  true,
+			NSC:  true,
+			Raw:  "BECMG AT1600 NSW NSC",
+		},
+	}, m.Trends)
+
+	assert.Contains(t, formatWithoutTime(m), `
+Trends:
+
+1. Temporary 2026-03-17 12:30 UTC to 2026-03-17 14:00 UTC
+   Visibility: 4,000 meters
+   Weather: Rain showers
+   Clouds: Broken clouds at 1,400 feet (towering cumulus)
+
+2. Becoming at 2026-03-17 16:00 UTC
+   Weather: No significant weather
+   Clouds: No significant clouds
+`)
+}
+
+func TestMETARTrendTimeAfterMidnight(t *testing.T) {
+	m := DecodeMETAR("LFPG 172350Z 20010KT CAVOK 15/05 Q1020 BECMG TL0030 25015KT", metarTestReference)
+
+	require.Len(t, m.Trends, 1)
+	assert.Equal(t, utc(2026, time.March, 18, 0, 30), m.Trends[0].To)
+	assert.Equal(t, "250", m.Trends[0].Wind.Direction)
+}
+
+func TestMETARRunwayWindShear(t *testing.T) {
+	m := DecodeMETAR("OMDB 121650Z 18010KT 9999 FEW030 30/20 Q1008 WS ALL RWY WS R12L WS TKOF RWY30R", metarTestReference)
+
+	assert.Empty(t, m.Unhandled)
+	assert.Equal(t, []WindShear{
+		{Type: "RWY", Phase: "ALL", Raw: "WS ALL RWY"},
+		{Type: "RWY", Runway: "12L", Raw: "WS R12L"},
+		{Type: "RWY", Phase: "TKOF", Runway: "30R", Raw: "WS TKOF RWY30R"},
+	}, m.WindShear)
+}
+
+func TestMETARPressureGluedToNextSection(t *testing.T) {
+	m := DecodeMETAR("WMKK 081130Z 20004KT 9999 VCTS FEW016CB 27/22 Q1006TEMPO FM1150 4000 TSRA", metarTestReference)
+
+	assert.Equal(t, 1006.0, m.Pressure)
+	require.Len(t, m.Trends, 1)
+	assert.Equal(t, []string{"TSRA"}, m.Trends[0].Weather)
+	assert.Empty(t, m.Unhandled)
+}
+
+func TestMETARStationPressure(t *testing.T) {
+	for _, raw := range []string{
+		"SLCB 081200Z 00000KT 6000 BKN008 11/11 QFE 774.3 BR",
+		"SLCB 081200Z 00000KT 6000 BKN008 11/11 QFE774.3 BR",
+	} {
+		m := DecodeMETAR(raw, metarTestReference)
+		assert.Equal(t, 774.3, m.StationPressure, raw)
+		assert.Equal(t, []string{"BR"}, m.Weather, raw)
+		assert.Empty(t, m.Unhandled, raw)
+		assert.Contains(t, formatWithoutTime(m), "Station Pressure: 774.3 hPa\n")
+	}
+}
+
+func TestMETARRemarksWithoutBody(t *testing.T) {
+	assert.NotPanics(t, func() { DecodeMETAR("KXYZ RMK AO2", metarTestReference) })
+	m := DecodeMETAR("KXYZ 121651Z RMK AO2", metarTestReference)
+	assert.Len(t, m.Remarks, 1)
 }

@@ -23,8 +23,8 @@ var corpusReference = time.Date(2025, time.March, 10, 0, 0, 0, 0, time.UTC)
 var coverageThresholds = map[string]int{
 	"metar.station_mismatch":             0,
 	"metar.time_mismatch":                1,
-	"metar.body_unhandled":               186,
-	"metar.body_unrepresented":           2727,
+	"metar.body_unhandled":               162,
+	"metar.body_unrepresented":           466,
 	"metar.weather_not_weather":          0,
 	"metar.weather_missed":               0,
 	"metar.wind_mismatch":                0,
@@ -52,6 +52,7 @@ var (
 	testFromRegex         = regexp.MustCompile(`^FM\d{6}$`)
 	testProbRegex         = regexp.MustCompile(`^PROB\d{2}$`)
 	testDigitRegex        = regexp.MustCompile(`\d`)
+	testGluedPressure     = regexp.MustCompile(`^([AQ]\d{4})(NOSIG|TEMPO|BECMG|RMK)$`)
 )
 
 var testHeaderKeywords = []string{"TAF", "METAR", "SPECI", "AMD", "COR", "RTD"}
@@ -248,6 +249,21 @@ func addMETARRenderings(metar METAR, set map[string]bool) {
 			set[temperature+"///"] = true
 		}
 	}
+	if metar.StationPressure > 0 {
+		qfe := fmt.Sprintf("%.1f", metar.StationPressure)
+		set["QFE"] = true
+		set[qfe] = true
+		set["QFE"+qfe] = true
+		set[strings.Replace(qfe, ".", "/", 1)] = true
+	}
+	for _, trend := range metar.Trends {
+		addForecastRenderings(trend, set)
+		for prefix, at := range map[string]time.Time{"FM": trend.From, "TL": trend.To, "AT": trend.At} {
+			if !at.IsZero() {
+				set[prefix+at.Format("1504")] = true
+			}
+		}
+	}
 	switch {
 	case metar.Pressure == 0 && metar.PressureUnit == "inHg":
 		set["A////"] = true
@@ -259,6 +275,21 @@ func addMETARRenderings(metar METAR, set map[string]bool) {
 		set[fmt.Sprintf("A%04d", int(math.Round(metar.Pressure*100)))] = true
 	case "hPa":
 		set[fmt.Sprintf("Q%04d", int(metar.Pressure))] = true
+	}
+}
+
+func addForecastRenderings(period Forecast, set map[string]bool) {
+	if period.VertVis > 0 {
+		set[fmt.Sprintf("VV%03d", period.VertVis)] = true
+	}
+	if period.NSC {
+		set["NSC"] = true
+	}
+	if period.NSW {
+		set["NSW"] = true
+	}
+	if period.PressureUnit == "inHg" {
+		set[fmt.Sprintf("QNH%04dINS", int(math.Round(period.Pressure*100)))] = true
 	}
 }
 
@@ -307,8 +338,22 @@ func TestMETARCorpusCoverage(t *testing.T) {
 	report.check(t, metarCoverageMetrics)
 }
 
+// splitGluedPressure separates a pressure group that runs into the next keyword, as in "Q1006TEMPO",
+// the way the decoder reads it
+func splitGluedPressure(fields []string) []string {
+	var split []string
+	for _, field := range fields {
+		if m := testGluedPressure.FindStringSubmatch(field); m != nil {
+			split = append(split, m[1], m[2])
+			continue
+		}
+		split = append(split, field)
+	}
+	return split
+}
+
 func checkMETAR(line string, metar METAR, report *coverageReport) {
-	fields := strings.Fields(line)
+	fields := splitGluedPressure(strings.Fields(line))
 	start := headerLength(fields)
 	station := expectedStation(fields)
 	bodyEnd := indexOrLen(fields, "RMK")
@@ -511,18 +556,7 @@ func checkTAF(line string, taf TAF, report *coverageReport) {
 
 	represented := representedTokens(taf)
 	for _, period := range taf.Forecasts {
-		if period.VertVis > 0 {
-			represented[fmt.Sprintf("VV%03d", period.VertVis)] = true
-		}
-		if period.NSC {
-			represented["NSC"] = true
-		}
-		if period.NSW {
-			represented["NSW"] = true
-		}
-		if period.PressureUnit == "inHg" {
-			represented[fmt.Sprintf("QNH%04dINS", int(math.Round(period.Pressure*100)))] = true
-		}
+		addForecastRenderings(period, represented)
 	}
 	for _, token := range forecast {
 		switch {
